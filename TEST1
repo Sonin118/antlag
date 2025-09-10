@@ -286,7 +286,7 @@ atualizarLista()
 -- CONFIG
 local ENABLE_STRIP_SKINS      = true
 local ENABLE_NO_WALLS         = true
-local ENABLE_BRAINHOT_ESP     = true
+local ENABLE_BRAINHOT_ESP     = false     -- DESABILITADO - não funciona
 local ENABLE_PLAYER_HIGHLIGHT = true      -- highlight vermelho
 local ENABLE_PLAYER_RING      = true      -- anel/círculo vermelho no chão
 local BRAINHOT_LIMITE         = 1_000_000
@@ -691,51 +691,54 @@ local function ultraSoftWalls()
     end
 end
 
--- ===== ESP / HIGHLIGHT / RING =====
-local function ensureHighlight(character)
-    local hl = character:FindFirstChild("BrainhotESP_Highlight")
+-- ===== ESP MELHORADO - APENAS PLAYERS =====
+local function ensurePlayerHighlight(character)
+    local hl = character:FindFirstChild("PlayerESP_Highlight")
     if not hl then
         hl = Instance.new("Highlight")
-        hl.Name = "BrainhotESP_Highlight"
-        hl.FillColor = BH_FILL_COLOR
-        hl.OutlineColor = BH_OUTLINE_COLOR
-        hl.FillTransparency = BH_FILL_TRANSP
-        hl.OutlineTransparency = BH_OUTLINE_TRANSP
+        hl.Name = "PlayerESP_Highlight"
+        hl.FillColor = Color3.fromRGB(255, 0, 0) -- Vermelho brilhante
+        hl.OutlineColor = Color3.fromRGB(255, 255, 0) -- Amarelo brilhante
+        hl.FillTransparency = 0.3 -- Mais visível
+        hl.OutlineTransparency = 0.0 -- Contorno bem visível
         hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
         hl.Parent = character
     end
     return hl
 end
 
--- Círculo vermelho (cilindro fininho) no HumanoidRootPart
-local function ensureRing(character)
+-- Círculo vermelho melhorado no chão
+local function ensurePlayerRing(character)
     local hrp = character:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
-    local ring = hrp:FindFirstChild("Sonin_RedRing")
+    local ring = hrp:FindFirstChild("PlayerESP_Ring")
     if not ring then
         ring = Instance.new("CylinderHandleAdornment")
-        ring.Name = "Sonin_RedRing"
-        ring.Radius = RING_RADIUS
-        ring.Height = RING_HEIGHT
-        ring.Color3 = RING_COLOR
-        ring.Transparency = RING_TRANSP
+        ring.Name = "PlayerESP_Ring"
+        ring.Radius = 4.0 -- Maior
+        ring.Height = 0.2 -- Mais espesso
+        ring.Color3 = Color3.fromRGB(255, 0, 0) -- Vermelho brilhante
+        ring.Transparency = 0.2 -- Mais visível
         ring.Adornee = hrp
         ring.AlwaysOnTop = true
-        ring.ZIndex = 5
+        ring.ZIndex = 10 -- Mais alto
         ring.Parent = hrp
     end
     return ring
 end
 
-local function ensureBillboard(head, value)
-    local bb = head:FindFirstChild("BrainhotESP_BB")
-    if not bb then
-        bb = Instance.new("BillboardGui")
-        bb.Name = "BrainhotESP_BB"
-        bb.AlwaysOnTop = true
-        bb.Size = UDim2.new(0, 200, 0, 40)
-        bb.StudsOffset = Vector3.new(0, 2.5, 0)
-        bb.Parent = head
+-- Nome do player acima da cabeça
+local function ensurePlayerName(character)
+    local head = character:FindFirstChild("Head")
+    if not head then return end
+    local nameGui = head:FindFirstChild("PlayerESP_Name")
+    if not nameGui then
+        nameGui = Instance.new("BillboardGui")
+        nameGui.Name = "PlayerESP_Name"
+        nameGui.AlwaysOnTop = true
+        nameGui.Size = UDim2.new(0, 200, 0, 50)
+        nameGui.StudsOffset = Vector3.new(0, 3, 0)
+        nameGui.Parent = head
 
         local label = Instance.new("TextLabel")
         label.Name = "Text"
@@ -743,13 +746,13 @@ local function ensureBillboard(head, value)
         label.Size = UDim2.new(1, 0, 1, 0)
         label.Font = Enum.Font.SourceSansBold
         label.TextScaled = true
-        label.TextColor3 = Color3.fromRGB(255,255,0)
-        label.TextStrokeTransparency = 0.5
-        label.Parent = bb
+        label.TextColor3 = Color3.fromRGB(255, 255, 255) -- Branco
+        label.TextStrokeTransparency = 0.0 -- Contorno preto
+        label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        label.Text = character.Parent.Name -- Nome do player
+        label.Parent = nameGui
     end
-    local t = bb:FindFirstChild("Text")
-    if t then t.Text = "Brainhot: " .. tostring(value) end
-    return bb
+    return nameGui
 end
 
 local function ultraSetupPerPlayerVisuals(plr)
@@ -760,39 +763,16 @@ local function ultraSetupPerPlayerVisuals(plr)
 
         extremeStripCharacter(char)
 
-        if ENABLE_PLAYER_HIGHLIGHT then ensureHighlight(char) end
-        if ENABLE_PLAYER_RING then ensureRing(char) end
-
-        local head = safeGetHead(char)
-        if ENABLE_BRAINHOT_ESP and head then
-            task.spawn(function()
-                local lastValue = 0
-                local lastUpdate = 0
-                while char.Parent and head.Parent do
-                    local currentTime = tick()
-                    if currentTime - lastUpdate >= ULTRA_PERFORMANCE.ESP_UPDATE_INTERVAL then
-                        local value = getBrainhotValue(plr)
-                        if value ~= lastValue then -- Só atualizar se o valor mudou
-                            lastValue = value
-                            if value >= BRAINHOT_LIMITE then
-                                ensureHighlight(char)
-                                ensureBillboard(head, value)
-                                if ENABLE_PLAYER_RING then ensureRing(char) end
-                            else
-                                local bb = head:FindFirstChild("BrainhotESP_BB")
-                                if bb then pcall(function() bb:Destroy() end) end
-                                if not ENABLE_PLAYER_HIGHLIGHT then
-                                    local hl = char:FindFirstChild("BrainhotESP_Highlight")
-                                    if hl then pcall(function() hl:Destroy() end) end
-                                end
-                            end
-                        end
-                        lastUpdate = currentTime
-                    end
-                    task.wait(0.1) -- Verificação mais frequente mas processamento menos frequente
-                end
-            end)
+        -- ESP melhorado para TODOS os players
+        if ENABLE_PLAYER_HIGHLIGHT then 
+            ensurePlayerHighlight(char) 
         end
+        if ENABLE_PLAYER_RING then 
+            ensurePlayerRing(char) 
+        end
+        
+        -- Nome do player sempre visível
+        ensurePlayerName(char)
     end
 
     if plr.Character then hookChar(plr.Character) end
@@ -1019,4 +999,4 @@ local function ultraLightweightMode()
 end
 ultraLightweightMode()
 
-print(("[AntiLag MÁXIMO] OK | highlight/ring ativos | lighting MÁXIMO limpo | no-walls %.1fs | cache ativo | frame-skipping ativo | UI MÍNIMA | strip MÁXIMO | ULTRA LEVE"):format(ULTRA_PERFORMANCE.WALL_SCAN_INTERVAL))
+print(("[AntiLag MÁXIMO] OK | ESP PLAYERS MELHORADO | highlight/ring/nome ativos | lighting MÁXIMO limpo | no-walls %.1fs | cache ativo | frame-skipping ativo | UI MÍNIMA | strip MÁXIMO | ULTRA LEVE"):format(ULTRA_PERFORMANCE.WALL_SCAN_INTERVAL))
