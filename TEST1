@@ -284,8 +284,8 @@ atualizarLista()
 
 -- ============= ANTI-LAG (UPGRADE + RINGS) =============
 -- CONFIG
-local ENABLE_STRIP_SKINS      = true
-local ENABLE_NO_WALLS         = true
+local ENABLE_STRIP_SKINS      = false     -- DESABILITADO - muito poluído
+local ENABLE_NO_WALLS         = true      -- APENAS WALLS transparentes
 local ENABLE_BRAINHOT_ESP     = false     -- DESABILITADO - não funciona
 local ENABLE_PLAYER_HIGHLIGHT = true      -- highlight vermelho
 local ENABLE_PLAYER_RING      = true      -- anel/círculo vermelho no chão
@@ -308,7 +308,7 @@ local RING_TRANSP          = 0.25
 local RING_RADIUS          = 3.2   -- raio do círculo
 local RING_HEIGHT          = 0.1   -- espessura do cilindro
 
--- ===== LIGHTING / TERRAIN MÁXIMA OTIMIZAÇÃO =====
+-- ===== LIGHTING / TERRAIN COM FLAGS AVANÇADAS =====
 local function maximumLightTrim()
     local Lighting = game:GetService("Lighting")
     pcall(function()
@@ -327,13 +327,10 @@ local function maximumLightTrim()
         Lighting.FogEnd = 1000000
         Lighting.FogStart = 0
         Lighting.FogColor = Color3.fromRGB(127,127,127)
-        Lighting.ExposureCompensation = 0
-        Lighting.EnvironmentSpecularScale = 0
-        Lighting.EnvironmentDiffuseScale = 0
         
         -- Remover TUDO de forma MÁXIMA
         for _, ch in ipairs(Lighting:GetChildren()) do
-            pcall(function() ch:Destroy() end) -- Destruir TUDO
+            pcall(function() ch:Destroy() end)
         end
     end)
     
@@ -351,7 +348,7 @@ local function maximumLightTrim()
     -- Otimizar workspace de forma MÁXIMA
     pcall(function()
         workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-        workspace.CurrentCamera.FieldOfView = 60 -- Menor FOV = mais performance
+        workspace.CurrentCamera.FieldOfView = 60
         workspace.CurrentCamera.CameraSubject = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
         
         -- Remover TUDO desnecessário do workspace
@@ -367,6 +364,51 @@ local function maximumLightTrim()
     end)
 end
 maximumLightTrim()
+
+-- ===== APLICAR FLAGS AVANÇADAS DO ROBLOX =====
+local function applyAdvancedFlags()
+    pcall(function()
+        -- Configurações de performance baseadas nas flags
+        local settings = UserSettings()
+        local gameSettings = settings:GetService("UserGameSettings")
+        
+        -- Aplicar configurações de qualidade gráfica
+        gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
+        gameSettings.MasterVolume = 0
+        gameSettings.MusicVolume = 0
+        gameSettings.SFXVolume = 0
+        gameSettings.VoiceVolume = 0
+        
+        -- Configurações de renderização
+        gameSettings.GraphicsQualityLevel = 1
+        gameSettings.RenderingMode = Enum.RenderingMode.Direct3D11
+        
+        -- Desabilitar efeitos visuais
+        gameSettings.EnableMouseLockOption = false
+        gameSettings.EnableFullScreenAnalytics = false
+        gameSettings.EnableLuaAnalytics = false
+        gameSettings.EnableAnalyticsInStudio = false
+    end)
+    
+    -- Configurações de workspace otimizadas
+    pcall(function()
+        workspace.StreamingEnabled = false
+        workspace.Terrain.WaterWaveSize = 0
+        workspace.Terrain.WaterWaveSpeed = 0
+        workspace.Terrain.WaterReflectance = 0
+        workspace.Terrain.WaterTransparency = 1
+    end)
+    
+    -- Configurações de câmera otimizadas
+    pcall(function()
+        local camera = workspace.CurrentCamera
+        camera.CameraType = Enum.CameraType.Custom
+        camera.FieldOfView = 60
+        camera.MaxZoomDistance = 1000
+        camera.MinZoomDistance = 0.5
+    end)
+end
+applyAdvancedFlags()
 
 -- ===== SISTEMA ULTRA DE LIMPEZA DE MEMÓRIA =====
 local function ultraMemoryCleanup()
@@ -475,119 +517,10 @@ local function getBrainhotValue(plr)
     return brainhotValue and brainhotValue.Value or 0
 end
 
--- ===== STRIP SKINS EXTREMO - REMOVER TUDO =====
+-- ===== STRIP SKINS DESABILITADO - MUITO POLUÍDO =====
 local function extremeStripCharacter(character)
-    if not ENABLE_STRIP_SKINS or not character then return end
-    
-    -- Cache para evitar processar o mesmo character múltiplas vezes
-    if cache.processedPlayers[character] then return end
-    cache.processedPlayers[character] = true
-
-    -- Remover TUDO imediatamente
-    local children = character:GetChildren()
-    for i = 1, #children do
-        local item = children[i]
-        if item:IsA("Accessory") or item:IsA("Hat") or item:IsA("Shirt") or item:IsA("Pants")
-        or item:IsA("ShirtGraphic") or item:IsA("CharacterMesh") then 
-            pcall(function() item:Destroy() end) 
-        end
-    end
-    
-    -- Processar descendentes com limite extremo
-    local descendants = character:GetDescendants()
-    local processedThisFrame = 0
-    local maxPerFrame = ULTRA_PERFORMANCE.MAX_PROCESSED_PER_FRAME
-    
-    for i = 1, #descendants do
-        if processedThisFrame >= maxPerFrame then break end
-        
-        local part = descendants[i]
-        processedThisFrame = processedThisFrame + 1
-        
-        -- Destruir apenas efeitos desnecessários
-        if part:IsA("ParticleEmitter") or part:IsA("Fire") or part:IsA("Smoke")
-        or part:IsA("Sparkles") or part:IsA("Light") or part:IsA("PointLight")
-        or part:IsA("SpotLight") or part:IsA("SurfaceLight") or part:IsA("Trail") 
-        or part:IsA("Beam") or part:IsA("Sound") or part:IsA("Animation")
-        or part:IsA("AnimationTrack") or part:IsA("Animator") then
-            pcall(function() part:Destroy() end)
-        end
-        
-        -- Otimizar meshes mantendo texturas
-        if part:IsA("SpecialMesh") then
-            pcall(function()
-                part.Scale = Vector3.new(1,1,1)
-            end)
-        end
-        
-        -- Otimizar MeshParts mantendo cores
-        if part:IsA("MeshPart") then
-            pcall(function()
-                part.RenderFidelity = Enum.RenderFidelity.Performance
-                part.Material = Enum.Material.Plastic
-                part.CastShadow = false
-                part.Reflectance = 0
-                part.Transparency = 0.1 -- Apenas um pouco transparente
-            end)
-        end
-        
-        -- Otimizar BaseParts mantendo cores originais
-        if part:IsA("BasePart") then
-            pcall(function()
-                part.Material = Enum.Material.Plastic
-                part.Reflectance = 0
-                part.CastShadow = false
-                part.Transparency = 0.1 -- Apenas um pouco transparente
-            end)
-        end
-    end
-
-    -- Otimizar cabeça mantendo aparência
-    local head = character:FindFirstChild("Head")
-    if head then
-        -- Remover apenas decals desnecessários
-        for _, item in pairs(head:GetChildren()) do
-            if item:IsA("Decal") and not string.find(string.lower(item.Name), "face", 1, true) then
-                pcall(function() item:Destroy() end)
-            end
-        end
-        pcall(function()
-            head.Material = Enum.Material.Plastic
-            head.CastShadow = false
-            head.Transparency = 0.1 -- Apenas um pouco transparente
-        end)
-    end
-
-    -- Manter cores do corpo originais
-    local bodyColors = character:FindFirstChildOfClass("BodyColors")
-    if bodyColors then
-        -- Não remover, apenas otimizar
-        pcall(function()
-            -- Manter cores originais
-        end)
-    end
-
-    -- Otimizar humanoid de forma extrema
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        -- Parar todas as animações
-        local animator = humanoid:FindFirstChildOfClass("Animator")
-        if animator then
-            pcall(function() animator:Destroy() end)
-        end
-        
-        -- Remover descrição
-        local description = humanoid:FindFirstChildOfClass("HumanoidDescription")
-        if description then pcall(function() description:Destroy() end) end
-        
-        -- Otimizar propriedades
-        pcall(function()
-            humanoid.WalkSpeed = 16
-            humanoid.JumpPower = 50
-            humanoid.MaxHealth = 100
-            humanoid.Health = 100
-        end)
-    end
+    -- DESABILITADO - deixa os players normais
+    return
 end
 
 local function processPlayer(plr)
@@ -757,9 +690,7 @@ local function ultraSetupPerPlayerVisuals(plr)
     local function hookChar(char)
         if not char then return end
 
-        extremeStripCharacter(char)
-
-        -- ESP melhorado para TODOS os players
+        -- Apenas ESP, sem strip de skins
         if ENABLE_PLAYER_HIGHLIGHT then 
             ensurePlayerHighlight(char) 
         end
@@ -809,49 +740,8 @@ RunService.Heartbeat:Connect(function()
     if hbCounter >= 60 then -- ~1s
         hbCounter = 0
 
-        -- Strip de skins extremo com intervalo otimizado
-        if ENABLE_STRIP_SKINS and tick() - lastStripUpdate > ULTRA_PERFORMANCE.STRIP_INTERVAL then
-            lastStripUpdate = tick()
-            local players = Players:GetPlayers()
-            local processedThisFrame = 0
-            local maxPerFrame = ULTRA_PERFORMANCE.MAX_PROCESSED_PER_FRAME
-            
-            for i = 1, #players do
-                if processedThisFrame >= maxPerFrame then break end
-                
-                local p = players[i]
-                if p ~= player and p.Character then
-                    -- Remover TUDO imediatamente
-                    local children = p.Character:GetChildren()
-                    for j = 1, #children do
-                        local item = children[j]
-                        if item:IsA("Accessory") or item:IsA("Hat")
-                        or item:IsA("Shirt") or item:IsA("Pants")
-                        or item:IsA("ShirtGraphic") or item:IsA("CharacterMesh") then
-                            pcall(function() item:Destroy() end)
-                        end
-                    end
-                    
-                    local descendants = p.Character:GetDescendants()
-                    for k = 1, #descendants do
-                        if processedThisFrame >= maxPerFrame then break end
-                        
-                        local part = descendants[k]
-                        if part:IsA("BasePart") then
-                            pcall(function()
-                                part.CastShadow = false
-                                part.Material = Enum.Material.Plastic
-                                part.Reflectance = 0
-                                part.Transparency = 0.1 -- Apenas um pouco transparente
-                            end)
-                            processedThisFrame = processedThisFrame + 1
-                        elseif part:IsA("Sound") or part:IsA("ParticleEmitter") or part:IsA("Light") then
-                            pcall(function() part:Destroy() end)
-                        end
-                    end
-                end
-            end
-        end
+        -- Strip de skins DESABILITADO - muito poluído
+        -- Apenas manter ESP dos players
 
         if ENABLE_NO_WALLS then ultraSoftWalls() end
     end
@@ -877,15 +767,81 @@ pcall(function()
     Lighting.OutdoorAmbient = Color3.fromRGB(127,127,127)
 end)
 
--- ===== SISTEMA DE OTIMIZAÇÃO DE REDE =====
+-- ===== SISTEMA DE OTIMIZAÇÃO DE REDE AVANÇADA =====
 local function optimizeNetwork()
     pcall(function()
         -- Otimizar configurações de rede
         game:GetService("NetworkClient"):SetOutgoingKBPSLimit(math.huge)
         game:GetService("NetworkClient"):SetIncomingKBPSLimit(math.huge)
     end)
+    
+    -- Configurações avançadas de rede baseadas nas flags
+    pcall(function()
+        -- Desabilitar streaming de assets
+        workspace.StreamingEnabled = false
+        
+        -- Otimizar configurações de physics
+        workspace.Physics.ThrottleAdjustTime = 0.1
+        workspace.Physics.ThrottleEvalTimeStep = 0.1
+        
+        -- Configurações de renderização otimizadas
+        local camera = workspace.CurrentCamera
+        camera.CameraType = Enum.CameraType.Custom
+        camera.FieldOfView = 60
+        camera.MaxZoomDistance = 1000
+        camera.MinZoomDistance = 0.5
+    end)
 end
 optimizeNetwork()
+
+-- ===== CONFIGURAÇÕES AVANÇADAS DE PERFORMANCE =====
+local function applyPerformanceSettings()
+    pcall(function()
+        -- Configurações baseadas nas flags mais importantes
+        local settings = UserSettings()
+        local gameSettings = settings:GetService("UserGameSettings")
+        
+        -- Qualidade gráfica mínima
+        gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
+        gameSettings.GraphicsQualityLevel = 1
+        
+        -- Desabilitar áudio completamente
+        gameSettings.MasterVolume = 0
+        gameSettings.MusicVolume = 0
+        gameSettings.SFXVolume = 0
+        gameSettings.VoiceVolume = 0
+        
+        -- Configurações de renderização
+        gameSettings.RenderingMode = Enum.RenderingMode.Direct3D11
+        
+        -- Desabilitar analytics e telemetria
+        gameSettings.EnableMouseLockOption = false
+        gameSettings.EnableFullScreenAnalytics = false
+        gameSettings.EnableLuaAnalytics = false
+        gameSettings.EnableAnalyticsInStudio = false
+    end)
+    
+    -- Configurações de workspace baseadas nas flags
+    pcall(function()
+        -- Desabilitar streaming
+        workspace.StreamingEnabled = false
+        
+        -- Otimizar terrain
+        local terrain = workspace:FindFirstChildOfClass("Terrain")
+        if terrain then
+            terrain.WaterWaveSize = 0
+            terrain.WaterWaveSpeed = 0
+            terrain.WaterReflectance = 0
+            terrain.WaterTransparency = 1
+            terrain.WaterColor = Color3.fromRGB(0,0,0)
+        end
+        
+        -- Configurações de physics otimizadas
+        workspace.Physics.ThrottleAdjustTime = 0.1
+        workspace.Physics.ThrottleEvalTimeStep = 0.1
+    end)
+end
+applyPerformanceSettings()
 
 -- ===== SISTEMA DE MONITORAMENTO EM TEMPO REAL =====
 local function printPerformanceStats()
@@ -993,4 +949,44 @@ local function ultraLightweightMode()
 end
 ultraLightweightMode()
 
-print(("[AntiLag MÁXIMO] OK | ESP PLAYERS MELHORADO | highlight/ring/nome ativos | lighting MÁXIMO limpo | no-walls %.1fs | cache ativo | frame-skipping ativo | UI MÍNIMA | strip MÁXIMO | ULTRA LEVE"):format(ULTRA_PERFORMANCE.WALL_SCAN_INTERVAL))
+-- ===== CONFIGURAÇÕES FINAIS BASEADAS NAS FLAGS =====
+local function applyFinalOptimizations()
+    pcall(function()
+        -- Configurações finais baseadas nas flags mais importantes
+        local settings = UserSettings()
+        local gameSettings = settings:GetService("UserGameSettings")
+        
+        -- Aplicar todas as otimizações das flags
+        gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
+        gameSettings.GraphicsQualityLevel = 1
+        gameSettings.RenderingMode = Enum.RenderingMode.Direct3D11
+        
+        -- Desabilitar todos os volumes
+        gameSettings.MasterVolume = 0
+        gameSettings.MusicVolume = 0
+        gameSettings.SFXVolume = 0
+        gameSettings.VoiceVolume = 0
+        
+        -- Desabilitar analytics
+        gameSettings.EnableMouseLockOption = false
+        gameSettings.EnableFullScreenAnalytics = false
+        gameSettings.EnableLuaAnalytics = false
+        gameSettings.EnableAnalyticsInStudio = false
+    end)
+    
+    -- Configurações de workspace finais
+    pcall(function()
+        workspace.StreamingEnabled = false
+        workspace.Physics.ThrottleAdjustTime = 0.1
+        workspace.Physics.ThrottleEvalTimeStep = 0.1
+        
+        local camera = workspace.CurrentCamera
+        camera.CameraType = Enum.CameraType.Custom
+        camera.FieldOfView = 60
+        camera.MaxZoomDistance = 1000
+        camera.MinZoomDistance = 0.5
+    end)
+end
+applyFinalOptimizations()
+
+print(("[AntiLag ULTRA] OK | ESP PLAYERS | highlight/ring/nome ativos | APENAS WALLS transparentes | no-walls %.1fs | cache ativo | UI MÍNIMA | SEM STRIP SKINS | FLAGS AVANÇADAS ATIVAS"):format(ULTRA_PERFORMANCE.WALL_SCAN_INTERVAL))
