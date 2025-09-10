@@ -285,7 +285,7 @@ atualizarLista()
 -- ============= ANTI-LAG (UPGRADE + RINGS) =============
 -- CONFIG
 local ENABLE_STRIP_SKINS      = false     -- DESABILITADO - muito poluído
-local ENABLE_NO_WALLS         = true      -- APENAS WALLS transparentes
+local ENABLE_NO_WALLS         = false     -- DESABILITADO - impede ver o jogo
 local ENABLE_BRAINHOT_ESP     = false     -- DESABILITADO - não funciona
 local ENABLE_PLAYER_HIGHLIGHT = true      -- highlight vermelho
 local ENABLE_PLAYER_RING      = true      -- anel/círculo vermelho no chão
@@ -365,50 +365,47 @@ local function maximumLightTrim()
 end
 maximumLightTrim()
 
--- ===== APLICAR FLAGS AVANÇADAS DO ROBLOX =====
-local function applyAdvancedFlags()
+-- ===== CONFIGURAÇÕES BÁSICAS DE PERFORMANCE =====
+local function applyBasicOptimizations()
     pcall(function()
-        -- Configurações de performance baseadas nas flags
+        -- Apenas otimizações básicas que não afetam o gameplay
         local settings = UserSettings()
         local gameSettings = settings:GetService("UserGameSettings")
         
-        -- Aplicar configurações de qualidade gráfica
-        gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
-        gameSettings.MasterVolume = 0
-        gameSettings.MusicVolume = 0
-        gameSettings.SFXVolume = 0
-        gameSettings.VoiceVolume = 0
-        
-        -- Configurações de renderização
-        gameSettings.GraphicsQualityLevel = 1
+        -- Manter qualidade normal mas otimizada
+        gameSettings.GraphicsQualityLevel = 3 -- Qualidade média
         gameSettings.RenderingMode = Enum.RenderingMode.Direct3D11
         
-        -- Desabilitar efeitos visuais
-        gameSettings.EnableMouseLockOption = false
-        gameSettings.EnableFullScreenAnalytics = false
-        gameSettings.EnableLuaAnalytics = false
-        gameSettings.EnableAnalyticsInStudio = false
+        -- Manter áudio mas reduzido
+        gameSettings.MasterVolume = 0.3
+        gameSettings.MusicVolume = 0.1
+        gameSettings.SFXVolume = 0.2
+        gameSettings.VoiceVolume = 0.2
     end)
     
-    -- Configurações de workspace otimizadas
+    -- Configurações básicas de workspace
     pcall(function()
-        workspace.StreamingEnabled = false
-        workspace.Terrain.WaterWaveSize = 0
-        workspace.Terrain.WaterWaveSpeed = 0
-        workspace.Terrain.WaterReflectance = 0
-        workspace.Terrain.WaterTransparency = 1
+        -- Manter streaming habilitado para funcionar normalmente
+        workspace.StreamingEnabled = true
+        
+        -- Apenas otimizações básicas do terrain
+        local terrain = workspace:FindFirstChildOfClass("Terrain")
+        if terrain then
+            terrain.WaterWaveSize = 0.5 -- Reduzido mas não zero
+            terrain.WaterWaveSpeed = 0.5 -- Reduzido mas não zero
+        end
     end)
     
-    -- Configurações de câmera otimizadas
+    -- Configurações de câmera normais
     pcall(function()
         local camera = workspace.CurrentCamera
         camera.CameraType = Enum.CameraType.Custom
-        camera.FieldOfView = 60
-        camera.MaxZoomDistance = 1000
+        camera.FieldOfView = 70 -- Normal
+        camera.MaxZoomDistance = 400 -- Normal
         camera.MinZoomDistance = 0.5
     end)
 end
-applyAdvancedFlags()
+applyBasicOptimizations()
 
 -- ===== SISTEMA ULTRA DE LIMPEZA DE MEMÓRIA =====
 local function ultraMemoryCleanup()
@@ -657,7 +654,7 @@ local function ensurePlayerRing(character)
 end
 
 -- Nome do player acima da cabeça
-local function ensurePlayerName(character)
+local function ensurePlayerName(character, playerName)
     local head = character:FindFirstChild("Head")
     if not head then return end
     local nameGui = head:FindFirstChild("PlayerESP_Name")
@@ -678,8 +675,14 @@ local function ensurePlayerName(character)
         label.TextColor3 = Color3.fromRGB(255, 255, 255) -- Branco
         label.TextStrokeTransparency = 0.0 -- Contorno preto
         label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-        label.Text = character.Parent.Name -- Nome do player
+        label.Text = playerName -- Nome real do player
         label.Parent = nameGui
+    else
+        -- Atualizar o texto se já existir
+        local label = nameGui:FindFirstChild("Text")
+        if label then
+            label.Text = playerName
+        end
     end
     return nameGui
 end
@@ -698,8 +701,8 @@ local function ultraSetupPerPlayerVisuals(plr)
             ensurePlayerRing(char) 
         end
         
-        -- Nome do player sempre visível
-        ensurePlayerName(char)
+        -- Nome do player sempre visível (usando o nome real do player)
+        ensurePlayerName(char, plr.Name)
     end
 
     if plr.Character then hookChar(plr.Character) end
@@ -767,78 +770,54 @@ pcall(function()
     Lighting.OutdoorAmbient = Color3.fromRGB(127,127,127)
 end)
 
--- ===== SISTEMA DE OTIMIZAÇÃO DE REDE AVANÇADA =====
+-- ===== SISTEMA BÁSICO DE OTIMIZAÇÃO DE REDE =====
 local function optimizeNetwork()
     pcall(function()
-        -- Otimizar configurações de rede
+        -- Apenas otimizações básicas de rede
         game:GetService("NetworkClient"):SetOutgoingKBPSLimit(math.huge)
         game:GetService("NetworkClient"):SetIncomingKBPSLimit(math.huge)
     end)
     
-    -- Configurações avançadas de rede baseadas nas flags
+    -- Configurações básicas que não afetam o gameplay
     pcall(function()
-        -- Desabilitar streaming de assets
-        workspace.StreamingEnabled = false
+        -- Manter streaming habilitado
+        workspace.StreamingEnabled = true
         
-        -- Otimizar configurações de physics
-        workspace.Physics.ThrottleAdjustTime = 0.1
-        workspace.Physics.ThrottleEvalTimeStep = 0.1
-        
-        -- Configurações de renderização otimizadas
-        local camera = workspace.CurrentCamera
-        camera.CameraType = Enum.CameraType.Custom
-        camera.FieldOfView = 60
-        camera.MaxZoomDistance = 1000
-        camera.MinZoomDistance = 0.5
+        -- Configurações normais de physics
+        workspace.Physics.ThrottleAdjustTime = 0.5
+        workspace.Physics.ThrottleEvalTimeStep = 0.5
     end)
 end
 optimizeNetwork()
 
--- ===== CONFIGURAÇÕES AVANÇADAS DE PERFORMANCE =====
+-- ===== CONFIGURAÇÕES BÁSICAS DE PERFORMANCE =====
 local function applyPerformanceSettings()
     pcall(function()
-        -- Configurações baseadas nas flags mais importantes
+        -- Apenas otimizações básicas que não quebram o jogo
         local settings = UserSettings()
         local gameSettings = settings:GetService("UserGameSettings")
         
-        -- Qualidade gráfica mínima
-        gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
-        gameSettings.GraphicsQualityLevel = 1
+        -- Qualidade média para funcionar bem
+        gameSettings.GraphicsQualityLevel = 3
         
-        -- Desabilitar áudio completamente
-        gameSettings.MasterVolume = 0
-        gameSettings.MusicVolume = 0
-        gameSettings.SFXVolume = 0
-        gameSettings.VoiceVolume = 0
+        -- Manter áudio mas reduzido
+        gameSettings.MasterVolume = 0.3
+        gameSettings.MusicVolume = 0.1
+        gameSettings.SFXVolume = 0.2
+        gameSettings.VoiceVolume = 0.2
         
-        -- Configurações de renderização
+        -- Configurações de renderização normais
         gameSettings.RenderingMode = Enum.RenderingMode.Direct3D11
-        
-        -- Desabilitar analytics e telemetria
-        gameSettings.EnableMouseLockOption = false
-        gameSettings.EnableFullScreenAnalytics = false
-        gameSettings.EnableLuaAnalytics = false
-        gameSettings.EnableAnalyticsInStudio = false
     end)
     
-    -- Configurações de workspace baseadas nas flags
+    -- Configurações básicas de workspace
     pcall(function()
-        -- Desabilitar streaming
-        workspace.StreamingEnabled = false
+        -- Manter streaming habilitado
+        workspace.StreamingEnabled = true
         
-        -- Otimizar terrain
-        local terrain = workspace:FindFirstChildOfClass("Terrain")
-        if terrain then
-            terrain.WaterWaveSize = 0
-            terrain.WaterWaveSpeed = 0
-            terrain.WaterReflectance = 0
-            terrain.WaterTransparency = 1
-            terrain.WaterColor = Color3.fromRGB(0,0,0)
-        end
-        
-        -- Configurações de physics otimizadas
-        workspace.Physics.ThrottleAdjustTime = 0.1
-        workspace.Physics.ThrottleEvalTimeStep = 0.1
+        -- Configurações normais de physics
+        workspace.Physics.ThrottleAdjustTime = 0.5
+        workspace.Physics.ThrottleEvalTimeStep = 0.5
     end)
 end
 applyPerformanceSettings()
@@ -949,44 +928,4 @@ local function ultraLightweightMode()
 end
 ultraLightweightMode()
 
--- ===== CONFIGURAÇÕES FINAIS BASEADAS NAS FLAGS =====
-local function applyFinalOptimizations()
-    pcall(function()
-        -- Configurações finais baseadas nas flags mais importantes
-        local settings = UserSettings()
-        local gameSettings = settings:GetService("UserGameSettings")
-        
-        -- Aplicar todas as otimizações das flags
-        gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
-        gameSettings.GraphicsQualityLevel = 1
-        gameSettings.RenderingMode = Enum.RenderingMode.Direct3D11
-        
-        -- Desabilitar todos os volumes
-        gameSettings.MasterVolume = 0
-        gameSettings.MusicVolume = 0
-        gameSettings.SFXVolume = 0
-        gameSettings.VoiceVolume = 0
-        
-        -- Desabilitar analytics
-        gameSettings.EnableMouseLockOption = false
-        gameSettings.EnableFullScreenAnalytics = false
-        gameSettings.EnableLuaAnalytics = false
-        gameSettings.EnableAnalyticsInStudio = false
-    end)
-    
-    -- Configurações de workspace finais
-    pcall(function()
-        workspace.StreamingEnabled = false
-        workspace.Physics.ThrottleAdjustTime = 0.1
-        workspace.Physics.ThrottleEvalTimeStep = 0.1
-        
-        local camera = workspace.CurrentCamera
-        camera.CameraType = Enum.CameraType.Custom
-        camera.FieldOfView = 60
-        camera.MaxZoomDistance = 1000
-        camera.MinZoomDistance = 0.5
-    end)
-end
-applyFinalOptimizations()
-
-print(("[AntiLag ULTRA] OK | ESP PLAYERS | highlight/ring/nome ativos | APENAS WALLS transparentes | no-walls %.1fs | cache ativo | UI MÍNIMA | SEM STRIP SKINS | FLAGS AVANÇADAS ATIVAS"):format(ULTRA_PERFORMANCE.WALL_SCAN_INTERVAL))
+print(("[AntiLag BÁSICO] OK | ESP PLAYERS | highlight/ring/nome ativos | SEM WALLS | cache ativo | UI MÍNIMA | SEM STRIP SKINS | OTIMIZAÇÕES BÁSICAS"):format(ULTRA_PERFORMANCE.WALL_SCAN_INTERVAL))
