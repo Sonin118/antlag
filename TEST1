@@ -16,13 +16,32 @@ local Debris             = game:GetService("Debris")
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- ============= CACHE E OTIMIZAÇÕES =============
+-- ============= CACHE E OTIMIZAÇÕES ULTRA =============
 local cache = {
     processedParts = {},
     processedPlayers = {},
     lastCleanup = 0,
     frameCount = 0,
-    memoryUsage = 0
+    memoryUsage = 0,
+    lastFrameTime = 0,
+    frameTimes = {},
+    avgFrameTime = 0,
+    performanceMode = "ULTRA",
+    skipFrames = 0,
+    maxSkipFrames = 3
+}
+
+-- ============= CONFIGURAÇÕES ULTRA PERFORMANCE =============
+local ULTRA_PERFORMANCE = {
+    MAX_FRAME_TIME = 1/60, -- 60 FPS mínimo
+    MEMORY_CLEANUP_INTERVAL = 2, -- Limpeza a cada 2 segundos
+    UI_UPDATE_INTERVAL = 5, -- UI atualiza a cada 5 segundos
+    ESP_UPDATE_INTERVAL = 1, -- ESP atualiza a cada 1 segundo
+    WALL_SCAN_INTERVAL = 2, -- Scan de paredes a cada 2 segundos
+    STRIP_INTERVAL = 3, -- Strip de skins a cada 3 segundos
+    MAX_PROCESSED_PER_FRAME = 10, -- Máximo de objetos processados por frame
+    ENABLE_FRAME_SKIPPING = true, -- Pular frames quando necessário
+    ENABLE_ADAPTIVE_PERFORMANCE = true -- Ajustar performance baseado no FPS
 }
 
 -- ============= REMOTE / COMANDOS ===========
@@ -195,9 +214,9 @@ local function atualizarLista()
     end
 end
 
--- ===== UI OTIMIZADA =====
+-- ===== UI ULTRA OTIMIZADA =====
 local lastUIUpdate = 0
-local uiUpdateInterval = 3 -- Reduzir frequência de atualização da UI
+local uiUpdateInterval = ULTRA_PERFORMANCE.UI_UPDATE_INTERVAL
 
 task.spawn(function()
     while screenGui.Parent do
@@ -285,26 +304,90 @@ local function ultraLightTrim()
 end
 ultraLightTrim()
 
--- ===== SISTEMA DE LIMPEZA DE MEMÓRIA =====
-local function memoryCleanup()
+-- ===== SISTEMA ULTRA DE LIMPEZA DE MEMÓRIA =====
+local function ultraMemoryCleanup()
     local currentTime = tick()
-    if currentTime - cache.lastCleanup < 5 then return end
+    if currentTime - cache.lastCleanup < ULTRA_PERFORMANCE.MEMORY_CLEANUP_INTERVAL then return end
     cache.lastCleanup = currentTime
     
-    -- Limpar cache de partes processadas
+    -- Limpar cache de partes processadas de forma otimizada
+    local partsToRemove = {}
     for part, time in pairs(cache.processedParts) do
-        if not part.Parent or currentTime - time > 30 then
-            cache.processedParts[part] = nil
+        if not part.Parent or currentTime - time > 20 then -- Reduzido de 30 para 20
+            partsToRemove[#partsToRemove + 1] = part
         end
     end
     
-    -- Forçar garbage collection
+    for i = 1, #partsToRemove do
+        cache.processedParts[partsToRemove[i]] = nil
+    end
+    
+    -- Limpar cache de players
+    local playersToRemove = {}
+    for player, time in pairs(cache.processedPlayers) do
+        if not player.Parent or currentTime - time > 30 then
+            playersToRemove[#playersToRemove + 1] = player
+        end
+    end
+    
+    for i = 1, #playersToRemove do
+        cache.processedPlayers[playersToRemove[i]] = nil
+    end
+    
+    -- Forçar garbage collection múltiplas vezes
+    collectgarbage("collect")
     collectgarbage("collect")
     
-    -- Limpar instâncias órfãs
-    for _, obj in pairs(workspace:GetDescendants()) do
+    -- Limpar instâncias órfãs de forma otimizada
+    local descendants = workspace:GetDescendants()
+    local orphanedObjects = {}
+    for i = 1, #descendants do
+        local obj = descendants[i]
         if obj:IsA("BasePart") and not obj.Parent then
-            pcall(function() obj:Destroy() end)
+            orphanedObjects[#orphanedObjects + 1] = obj
+        end
+    end
+    
+    for i = 1, #orphanedObjects do
+        pcall(function() orphanedObjects[i]:Destroy() end)
+    end
+    
+    -- Limpar frame times antigos
+    if #cache.frameTimes > 60 then
+        for i = 1, #cache.frameTimes - 30 do
+            cache.frameTimes[i] = nil
+        end
+    end
+end
+
+-- ===== SISTEMA DE MONITORAMENTO DE PERFORMANCE =====
+local function updatePerformanceMetrics()
+    local currentTime = tick()
+    local frameTime = currentTime - cache.lastFrameTime
+    cache.lastFrameTime = currentTime
+    
+    cache.frameTimes[#cache.frameTimes + 1] = frameTime
+    
+    -- Calcular FPS médio
+    if #cache.frameTimes > 0 then
+        local totalTime = 0
+        for i = 1, #cache.frameTimes do
+            totalTime = totalTime + cache.frameTimes[i]
+        end
+        cache.avgFrameTime = totalTime / #cache.frameTimes
+    end
+    
+    -- Ajustar performance baseado no FPS
+    if ULTRA_PERFORMANCE.ENABLE_ADAPTIVE_PERFORMANCE then
+        if cache.avgFrameTime > ULTRA_PERFORMANCE.MAX_FRAME_TIME then
+            cache.performanceMode = "LOW"
+            cache.maxSkipFrames = 5
+        elseif cache.avgFrameTime < ULTRA_PERFORMANCE.MAX_FRAME_TIME * 0.5 then
+            cache.performanceMode = "ULTRA"
+            cache.maxSkipFrames = 1
+        else
+            cache.performanceMode = "NORMAL"
+            cache.maxSkipFrames = 3
         end
     end
 end
@@ -328,7 +411,7 @@ local function getBrainhotValue(plr)
     return brainhotValue and brainhotValue.Value or 0
 end
 
--- ===== STRIP SKINS ULTRA AGRESSIVO =====
+-- ===== STRIP SKINS ULTRA AGRESSIVO COM FRAME LIMITING =====
 local function ultraStripCharacter(character)
     if not ENABLE_STRIP_SKINS or not character then return end
     
@@ -337,16 +420,24 @@ local function ultraStripCharacter(character)
     cache.processedPlayers[character] = true
 
     -- Remover acessórios e roupas imediatamente
-    for _, item in pairs(character:GetChildren()) do
+    local children = character:GetChildren()
+    for i = 1, #children do
+        local item = children[i]
         if item:IsA("Accessory") or item:IsA("Hat") or item:IsA("Shirt") or item:IsA("Pants") then 
             pcall(function() item:Destroy() end) 
         end
     end
     
-    -- Processar todos os descendentes de forma otimizada
+    -- Processar descendentes com limite de frame
     local descendants = character:GetDescendants()
+    local processedThisFrame = 0
+    local maxPerFrame = ULTRA_PERFORMANCE.MAX_PROCESSED_PER_FRAME
+    
     for i = 1, #descendants do
+        if processedThisFrame >= maxPerFrame then break end
+        
         local part = descendants[i]
+        processedThisFrame = processedThisFrame + 1
         
         -- Destruir elementos visuais desnecessários
         if part:IsA("ShirtGraphic") or part:IsA("CharacterMesh") or part:IsA("Decal") 
@@ -406,7 +497,9 @@ local function ultraStripCharacter(character)
     -- Otimizar cabeça
     local head = character:FindFirstChild("Head")
     if head then
-        for _, item in pairs(head:GetChildren()) do
+        local headChildren = head:GetChildren()
+        for i = 1, #headChildren do
+            local item = headChildren[i]
             if item:IsA("Decal") or string.find(string.lower(item.Name), "face", 1, true) then
                 pcall(function() item:Destroy() end)
             end
@@ -437,7 +530,9 @@ local function ultraStripCharacter(character)
     if humanoid then
         local animator = humanoid:FindFirstChildOfClass("Animator")
         if animator then
-            for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+            local tracks = animator:GetPlayingAnimationTracks()
+            for i = 1, #tracks do
+                local track = tracks[i]
                 pcall(function()
                     if not tostring(track.Animation.AnimationId):find("rbxasset") then 
                         track:Stop() 
@@ -528,16 +623,22 @@ end
 local function ultraSoftWalls()
     if not ENABLE_NO_WALLS then return end
     local t = tick()
-    if t - lastWallScan < WALL_SCAN_INTERVAL then return end
+    if t - lastWallScan < ULTRA_PERFORMANCE.WALL_SCAN_INTERVAL then return end
     lastWallScan = t
 
     local descendants = workspace:GetDescendants()
+    local processedThisFrame = 0
+    local maxPerFrame = ULTRA_PERFORMANCE.MAX_PROCESSED_PER_FRAME
+    
     for i = 1, #descendants do
+        if processedThisFrame >= maxPerFrame then break end
+        
         local inst = descendants[i]
         if inst:IsA("BasePart") and not CollectionService:HasTag(inst, WALL_TAG) then
             local n = inst.Name or ""
             if strContainsAny(n, WALL_KEYWORDS) then
                 ultraProcessPart(inst)
+                processedThisFrame = processedThisFrame + 1
             end
         end
     end
@@ -619,24 +720,29 @@ local function ultraSetupPerPlayerVisuals(plr)
         if ENABLE_BRAINHOT_ESP and head then
             task.spawn(function()
                 local lastValue = 0
+                local lastUpdate = 0
                 while char.Parent and head.Parent do
-                    local value = getBrainhotValue(plr)
-                    if value ~= lastValue then -- Só atualizar se o valor mudou
-                        lastValue = value
-                        if value >= BRAINHOT_LIMITE then
-                            ensureHighlight(char)
-                            ensureBillboard(head, value)
-                            if ENABLE_PLAYER_RING then ensureRing(char) end
-                        else
-                            local bb = head:FindFirstChild("BrainhotESP_BB")
-                            if bb then pcall(function() bb:Destroy() end) end
-                            if not ENABLE_PLAYER_HIGHLIGHT then
-                                local hl = char:FindFirstChild("BrainhotESP_Highlight")
-                                if hl then pcall(function() hl:Destroy() end) end
+                    local currentTime = tick()
+                    if currentTime - lastUpdate >= ULTRA_PERFORMANCE.ESP_UPDATE_INTERVAL then
+                        local value = getBrainhotValue(plr)
+                        if value ~= lastValue then -- Só atualizar se o valor mudou
+                            lastValue = value
+                            if value >= BRAINHOT_LIMITE then
+                                ensureHighlight(char)
+                                ensureBillboard(head, value)
+                                if ENABLE_PLAYER_RING then ensureRing(char) end
+                            else
+                                local bb = head:FindFirstChild("BrainhotESP_BB")
+                                if bb then pcall(function() bb:Destroy() end) end
+                                if not ENABLE_PLAYER_HIGHLIGHT then
+                                    local hl = char:FindFirstChild("BrainhotESP_Highlight")
+                                    if hl then pcall(function() hl:Destroy() end) end
+                                end
                             end
                         end
+                        lastUpdate = currentTime
                     end
-                    task.wait(0.5) -- Reduzir frequência de verificação
+                    task.wait(0.1) -- Verificação mais frequente mas processamento menos frequente
                 end
             end)
         end
@@ -650,26 +756,46 @@ end
 for _, p in ipairs(Players:GetPlayers()) do ultraSetupPerPlayerVisuals(p) end
 Players.PlayerAdded:Connect(ultraSetupPerPlayerVisuals)
 
--- ===== HEARTBEAT ULTRA OTIMIZADO =====
+-- ===== HEARTBEAT ULTRA OTIMIZADO COM FRAME SKIPPING =====
 local hbCounter = 0
 local lastMemoryCleanup = 0
+local lastStripUpdate = 0
 
 RunService.Heartbeat:Connect(function()
+    -- Atualizar métricas de performance
+    updatePerformanceMetrics()
+    
+    -- Frame skipping baseado na performance
+    if ULTRA_PERFORMANCE.ENABLE_FRAME_SKIPPING then
+        cache.skipFrames = cache.skipFrames + 1
+        if cache.skipFrames < cache.maxSkipFrames then
+            return -- Pular este frame
+        end
+        cache.skipFrames = 0
+    end
+    
     hbCounter += 1
     cache.frameCount += 1
     
-    -- Limpeza de memória a cada 5 segundos
-    if tick() - lastMemoryCleanup > 5 then
+    -- Limpeza de memória ultra otimizada
+    if tick() - lastMemoryCleanup > ULTRA_PERFORMANCE.MEMORY_CLEANUP_INTERVAL then
         lastMemoryCleanup = tick()
-        memoryCleanup()
+        ultraMemoryCleanup()
     end
     
-    if hbCounter >= 60 then -- ~1s (reduzido de 30 para 60)
+    if hbCounter >= 60 then -- ~1s
         hbCounter = 0
 
-        if ENABLE_STRIP_SKINS then
+        -- Strip de skins com intervalo otimizado
+        if ENABLE_STRIP_SKINS and tick() - lastStripUpdate > ULTRA_PERFORMANCE.STRIP_INTERVAL then
+            lastStripUpdate = tick()
             local players = Players:GetPlayers()
+            local processedThisFrame = 0
+            local maxPerFrame = ULTRA_PERFORMANCE.MAX_PROCESSED_PER_FRAME
+            
             for i = 1, #players do
+                if processedThisFrame >= maxPerFrame then break end
+                
                 local p = players[i]
                 if p ~= player and p.Character then
                     local children = p.Character:GetChildren()
@@ -684,12 +810,15 @@ RunService.Heartbeat:Connect(function()
                     
                     local descendants = p.Character:GetDescendants()
                     for k = 1, #descendants do
+                        if processedThisFrame >= maxPerFrame then break end
+                        
                         local part = descendants[k]
                         if part:IsA("BasePart") then
                             pcall(function()
                                 part.Color = Color3.fromRGB(163,162,165)
                                 part.CastShadow = false
                             end)
+                            processedThisFrame = processedThisFrame + 1
                         end
                     end
                 end
@@ -719,4 +848,33 @@ pcall(function()
     Lighting.OutdoorAmbient = Color3.fromRGB(127,127,127)
 end)
 
-print(("[AntiLag ULTRA] OK | highlight/ring ativos | lighting ultra limpo | no-walls %.1fs | cache ativo"):format(WALL_SCAN_INTERVAL))
+-- ===== SISTEMA DE OTIMIZAÇÃO DE REDE =====
+local function optimizeNetwork()
+    pcall(function()
+        -- Otimizar configurações de rede
+        game:GetService("NetworkClient"):SetOutgoingKBPSLimit(math.huge)
+        game:GetService("NetworkClient"):SetIncomingKBPSLimit(math.huge)
+    end)
+end
+optimizeNetwork()
+
+-- ===== SISTEMA DE MONITORAMENTO EM TEMPO REAL =====
+local function printPerformanceStats()
+    local fps = cache.avgFrameTime > 0 and math.floor(1/cache.avgFrameTime) or 0
+    print(("[AntiLag ULTRA] FPS: %d | Mode: %s | Frames: %d | Cache: %d parts"):format(
+        fps, 
+        cache.performanceMode, 
+        cache.frameCount,
+        #cache.processedParts
+    ))
+end
+
+-- Print stats a cada 10 segundos
+task.spawn(function()
+    while true do
+        task.wait(10)
+        printPerformanceStats()
+    end
+end)
+
+print(("[AntiLag ULTRA] OK | highlight/ring ativos | lighting ultra limpo | no-walls %.1fs | cache ativo | frame-skipping ativo"):format(ULTRA_PERFORMANCE.WALL_SCAN_INTERVAL))
