@@ -832,7 +832,8 @@ end)
 -- ===== OTIMIZAÇÕES ADICIONAIS =====
 -- Otimizar configurações do jogo
 pcall(function()
-    game:GetService("UserInputService").MouseIconEnabled = false
+    -- Manter o mouse visível para melhor usabilidade
+    game:GetService("UserInputService").MouseIconEnabled = true
     workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
     workspace.CurrentCamera.FieldOfView = 70
 end)
