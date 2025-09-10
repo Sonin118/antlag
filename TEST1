@@ -31,17 +31,20 @@ local cache = {
     maxSkipFrames = 3
 }
 
--- ============= CONFIGURAÇÕES ULTRA PERFORMANCE =============
+-- ============= CONFIGURAÇÕES EXTREMA PERFORMANCE =============
 local ULTRA_PERFORMANCE = {
     MAX_FRAME_TIME = 1/60, -- 60 FPS mínimo
-    MEMORY_CLEANUP_INTERVAL = 2, -- Limpeza a cada 2 segundos
-    UI_UPDATE_INTERVAL = 5, -- UI atualiza a cada 5 segundos
-    ESP_UPDATE_INTERVAL = 1, -- ESP atualiza a cada 1 segundo
-    WALL_SCAN_INTERVAL = 2, -- Scan de paredes a cada 2 segundos
-    STRIP_INTERVAL = 3, -- Strip de skins a cada 3 segundos
-    MAX_PROCESSED_PER_FRAME = 10, -- Máximo de objetos processados por frame
+    MEMORY_CLEANUP_INTERVAL = 1, -- Limpeza a cada 1 segundo (mais agressivo)
+    UI_UPDATE_INTERVAL = 10, -- UI atualiza a cada 10 segundos (muito menos frequente)
+    ESP_UPDATE_INTERVAL = 2, -- ESP atualiza a cada 2 segundos
+    WALL_SCAN_INTERVAL = 5, -- Scan de paredes a cada 5 segundos
+    STRIP_INTERVAL = 5, -- Strip de skins a cada 5 segundos
+    MAX_PROCESSED_PER_FRAME = 5, -- Máximo de 5 objetos por frame (muito reduzido)
     ENABLE_FRAME_SKIPPING = true, -- Pular frames quando necessário
-    ENABLE_ADAPTIVE_PERFORMANCE = true -- Ajustar performance baseado no FPS
+    ENABLE_ADAPTIVE_PERFORMANCE = true, -- Ajustar performance baseado no FPS
+    ENABLE_AGGRESSIVE_CLEANUP = true, -- Limpeza agressiva
+    ENABLE_MINIMAL_UI = true, -- UI mínima
+    ENABLE_ULTRA_STRIP = true -- Strip ultra agressivo
 }
 
 -- ============= REMOTE / COMANDOS ===========
@@ -214,9 +217,50 @@ local function atualizarLista()
     end
 end
 
--- ===== UI ULTRA OTIMIZADA =====
+-- ===== UI EXTREMA - MÍNIMA POSSÍVEL =====
 local lastUIUpdate = 0
 local uiUpdateInterval = ULTRA_PERFORMANCE.UI_UPDATE_INTERVAL
+
+-- UI ultra simplificada - apenas o essencial
+if ULTRA_PERFORMANCE.ENABLE_MINIMAL_UI then
+    -- Reduzir tamanho do painel
+    frame.Size = UDim2.new(0, 150, 0, 200) -- Menor
+    frame.Position = UDim2.new(1, -170, 0.5, 100)
+    
+    -- Reduzir tamanho dos botões
+    local function criarBotaoMinimal(playerObj)
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, -16, 0, 30) -- Menor
+        btn.BackgroundColor3 = Color3.fromRGB(14, 17, 22)
+        btn.BorderSizePixel = 0
+        btn.AutoButtonColor = false
+        btn.Text = ""
+        btn.Parent = scrolling
+
+        local cornerBtn = Instance.new("UICorner")
+        cornerBtn.CornerRadius = UDim.new(0, 5) -- Menor
+        cornerBtn.Parent = btn
+
+        local playerNameLbl = Instance.new("TextLabel")
+        playerNameLbl.Size = UDim2.new(1, -10, 1, 0)
+        playerNameLbl.Position = UDim2.new(0, 5, 0, 0)
+        playerNameLbl.BackgroundTransparency = 1
+        playerNameLbl.Text = playerObj.Name
+        playerNameLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+        playerNameLbl.Font = Enum.Font.GothamBold
+        playerNameLbl.TextSize = 12 -- Menor
+        playerNameLbl.TextXAlignment = Enum.TextXAlignment.Left
+        playerNameLbl.Parent = btn
+
+        btn.MouseButton1Click:Connect(function()
+            executarComandos(playerObj.Name)
+        end)
+    end
+    
+    -- Substituir função de criar botão
+    local originalCriarBotao = criarBotao
+    criarBotao = criarBotaoMinimal
+end
 
 task.spawn(function()
     while screenGui.Parent do
@@ -225,7 +269,7 @@ task.spawn(function()
             atualizarLista()
             lastUIUpdate = currentTime
         end
-        task.wait(1) -- Verificar a cada segundo se precisa atualizar
+        task.wait(2) -- Verificar a cada 2 segundos (menos frequente)
     end
 end)
 atualizarLista()
@@ -256,11 +300,11 @@ local RING_TRANSP          = 0.25
 local RING_RADIUS          = 3.2   -- raio do círculo
 local RING_HEIGHT          = 0.1   -- espessura do cilindro
 
--- ===== LIGHTING / TERRAIN ULTRA OTIMIZADO =====
-local function ultraLightTrim()
+-- ===== LIGHTING / TERRAIN EXTREMA OTIMIZAÇÃO =====
+local function extremeLightTrim()
     local Lighting = game:GetService("Lighting")
     pcall(function()
-        -- Configurações básicas de performance
+        -- Configurações extremas de performance
         Lighting.GlobalShadows = false
         Lighting.EnvironmentSpecularScale = 0
         Lighting.EnvironmentDiffuseScale = 0
@@ -270,19 +314,21 @@ local function ultraLightTrim()
         Lighting.ClockTime = 12
         Lighting.GeographicLatitude = 0
         Lighting.ExposureCompensation = 0
+        Lighting.ShadowSoftness = 0
+        Lighting.ShadowMapSize = 0
+        Lighting.FogEnd = 1000000
+        Lighting.FogStart = 0
+        Lighting.FogColor = Color3.fromRGB(127,127,127)
         
-        -- Remover todos os efeitos visuais
+        -- Remover TODOS os efeitos visuais de forma agressiva
         for _, ch in ipairs(Lighting:GetChildren()) do
             if ch:IsA("BloomEffect") or ch:IsA("SunRaysEffect") or ch:IsA("DepthOfFieldEffect")
             or ch:IsA("ColorCorrectionEffect") or ch:IsA("BlurEffect") or ch:IsA("Atmosphere")
-            or ch:IsA("Sky") or ch:IsA("PostEffect") then
+            or ch:IsA("Sky") or ch:IsA("PostEffect") or ch:IsA("LightingEffect")
+            or ch:IsA("Skybox") or ch:IsA("Environment") then
                 pcall(function() ch:Destroy() end)
             end
         end
-        
-        -- Configurações de sombra otimizadas
-        Lighting.ShadowSoftness = 0
-        Lighting.ShadowMapSize = 0
     end)
     
     local Terrain = workspace:FindFirstChildOfClass("Terrain")
@@ -293,16 +339,26 @@ local function ultraLightTrim()
             Terrain.WaterWaveSize = 0
             Terrain.WaterWaveSpeed = 0
             Terrain.WaterColor = Color3.fromRGB(0,0,0)
+            Terrain.WaterWaveSize = 0
+            Terrain.WaterWaveSpeed = 0
         end)
     end
     
-    -- Otimizar workspace
+    -- Otimizar workspace de forma extrema
     pcall(function()
         workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+        workspace.CurrentCamera.FieldOfView = 70
         workspace.CurrentCamera.CameraSubject = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        
+        -- Remover todos os sons desnecessários
+        for _, sound in ipairs(workspace:GetDescendants()) do
+            if sound:IsA("Sound") then
+                pcall(function() sound:Destroy() end)
+            end
+        end
     end)
 end
-ultraLightTrim()
+extremeLightTrim()
 
 -- ===== SISTEMA ULTRA DE LIMPEZA DE MEMÓRIA =====
 local function ultraMemoryCleanup()
@@ -411,24 +467,25 @@ local function getBrainhotValue(plr)
     return brainhotValue and brainhotValue.Value or 0
 end
 
--- ===== STRIP SKINS ULTRA AGRESSIVO COM FRAME LIMITING =====
-local function ultraStripCharacter(character)
+-- ===== STRIP SKINS EXTREMO - REMOVER TUDO =====
+local function extremeStripCharacter(character)
     if not ENABLE_STRIP_SKINS or not character then return end
     
     -- Cache para evitar processar o mesmo character múltiplas vezes
     if cache.processedPlayers[character] then return end
     cache.processedPlayers[character] = true
 
-    -- Remover acessórios e roupas imediatamente
+    -- Remover TUDO imediatamente
     local children = character:GetChildren()
     for i = 1, #children do
         local item = children[i]
-        if item:IsA("Accessory") or item:IsA("Hat") or item:IsA("Shirt") or item:IsA("Pants") then 
+        if item:IsA("Accessory") or item:IsA("Hat") or item:IsA("Shirt") or item:IsA("Pants")
+        or item:IsA("ShirtGraphic") or item:IsA("CharacterMesh") then 
             pcall(function() item:Destroy() end) 
         end
     end
     
-    -- Processar descendentes com limite de frame
+    -- Processar descendentes com limite extremo
     local descendants = character:GetDescendants()
     local processedThisFrame = 0
     local maxPerFrame = ULTRA_PERFORMANCE.MAX_PROCESSED_PER_FRAME
@@ -439,23 +496,26 @@ local function ultraStripCharacter(character)
         local part = descendants[i]
         processedThisFrame = processedThisFrame + 1
         
-        -- Destruir elementos visuais desnecessários
-        if part:IsA("ShirtGraphic") or part:IsA("CharacterMesh") or part:IsA("Decal") 
-        or part:IsA("Texture") or part:IsA("SurfaceAppearance") then
+        -- Destruir TUDO que não for essencial
+        if part:IsA("Decal") or part:IsA("Texture") or part:IsA("SurfaceAppearance")
+        or part:IsA("ParticleEmitter") or part:IsA("Fire") or part:IsA("Smoke")
+        or part:IsA("Sparkles") or part:IsA("Light") or part:IsA("PointLight")
+        or part:IsA("SpotLight") or part:IsA("SurfaceLight") or part:IsA("Trail") 
+        or part:IsA("Beam") or part:IsA("Sound") or part:IsA("Animation")
+        or part:IsA("AnimationTrack") or part:IsA("Animator") then
             pcall(function() part:Destroy() end)
         end
         
-        -- Otimizar meshes
+        -- Otimizar meshes de forma extrema
         if part:IsA("SpecialMesh") then
             pcall(function()
                 part.TextureId = ""
-                if part.MeshType == Enum.MeshType.FileMesh then 
-                    part.MeshId = "" 
-                end
+                part.MeshId = ""
+                part.Scale = Vector3.new(1,1,1)
             end)
         end
         
-        -- Otimizar MeshParts
+        -- Otimizar MeshParts de forma extrema
         if part:IsA("MeshPart") then
             pcall(function()
                 part.TextureID = ""
@@ -464,10 +524,11 @@ local function ultraStripCharacter(character)
                 part.Color = Color3.fromRGB(163,162,165)
                 part.CastShadow = false
                 part.Reflectance = 0
+                part.Transparency = 0
             end)
         end
         
-        -- Otimizar BaseParts
+        -- Otimizar BaseParts de forma extrema
         if part:IsA("BasePart") then
             pcall(function()
                 part.Material = Enum.Material.Plastic
@@ -475,86 +536,64 @@ local function ultraStripCharacter(character)
                 part.CastShadow = false
                 part.BrickColor = BrickColor.new("Medium stone grey")
                 part.Color = Color3.fromRGB(163,162,165)
-            end)
-        end
-        
-        -- Destruir efeitos visuais
-        if part:IsA("ParticleEmitter") or part:IsA("Fire") or part:IsA("Smoke")
-        or part:IsA("Sparkles") or part:IsA("Light") or part:IsA("PointLight")
-        or part:IsA("SpotLight") or part:IsA("SurfaceLight") or part:IsA("Trail") 
-        or part:IsA("Beam") or part:IsA("Sound") then
-            pcall(function()
-                if part:IsA("ParticleEmitter") then
-                    part.Rate = 0
-                    part.Speed = NumberRange.new(0,0)
-                    part.Enabled = false
-                end
-                part:Destroy()
+                part.Transparency = 0
+                part.CanCollide = false
             end)
         end
     end
 
-    -- Otimizar cabeça
+    -- Otimizar cabeça de forma extrema
     local head = character:FindFirstChild("Head")
     if head then
-        local headChildren = head:GetChildren()
-        for i = 1, #headChildren do
-            local item = headChildren[i]
-            if item:IsA("Decal") or string.find(string.lower(item.Name), "face", 1, true) then
-                pcall(function() item:Destroy() end)
-            end
+        -- Remover TUDO da cabeça
+        for _, item in pairs(head:GetChildren()) do
+            pcall(function() item:Destroy() end)
         end
         pcall(function()
             head.Color = Color3.fromRGB(163,162,165)
             head.Material = Enum.Material.Plastic
             head.CastShadow = false
+            head.Transparency = 0
         end)
     end
 
-    -- Otimizar cores do corpo
+    -- Remover cores do corpo completamente
     local bodyColors = character:FindFirstChildOfClass("BodyColors")
     if bodyColors then
-        pcall(function()
-            local stone = BrickColor.new("Medium stone grey")
-            bodyColors.HeadColor = stone
-            bodyColors.TorsoColor = stone
-            bodyColors.LeftArmColor = stone
-            bodyColors.RightArmColor = stone
-            bodyColors.LeftLegColor = stone
-            bodyColors.RightLegColor = stone
-        end)
+        pcall(function() bodyColors:Destroy() end)
     end
 
-    -- Otimizar humanoid
+    -- Otimizar humanoid de forma extrema
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     if humanoid then
+        -- Parar todas as animações
         local animator = humanoid:FindFirstChildOfClass("Animator")
         if animator then
-            local tracks = animator:GetPlayingAnimationTracks()
-            for i = 1, #tracks do
-                local track = tracks[i]
-                pcall(function()
-                    if not tostring(track.Animation.AnimationId):find("rbxasset") then 
-                        track:Stop() 
-                    end
-                end)
-            end
+            pcall(function() animator:Destroy() end)
         end
+        
+        -- Remover descrição
+        local description = humanoid:FindFirstChildOfClass("HumanoidDescription")
+        if description then pcall(function() description:Destroy() end) end
+        
+        -- Otimizar propriedades
         pcall(function()
-            local description = humanoid:FindFirstChildOfClass("HumanoidDescription")
-            if description then description:Destroy() end
+            humanoid.WalkSpeed = 16
+            humanoid.JumpPower = 50
+            humanoid.MaxHealth = 100
+            humanoid.Health = 100
         end)
     end
 end
 
 local function processPlayer(plr)
     if plr ~= player then
-        if plr.Character then ultraStripCharacter(plr.Character) end
+        if plr.Character then extremeStripCharacter(plr.Character) end
         plr.CharacterAdded:Connect(function(character)
-            task.wait(0.1) ultraStripCharacter(character)
-            task.wait(0.5) ultraStripCharacter(character)
+            task.wait(0.05) extremeStripCharacter(character)
+            task.wait(0.2) extremeStripCharacter(character)
         end)
-        plr.CharacterAppearanceLoaded:Connect(function(character) ultraStripCharacter(character) end)
+        plr.CharacterAppearanceLoaded:Connect(function(character) extremeStripCharacter(character) end)
     end
 end
 for _, p in ipairs(Players:GetPlayers()) do processPlayer(p) end
@@ -711,7 +750,7 @@ local function ultraSetupPerPlayerVisuals(plr)
     local function hookChar(char)
         if not char then return end
 
-        ultraStripCharacter(char)
+        extremeStripCharacter(char)
 
         if ENABLE_PLAYER_HIGHLIGHT then ensureHighlight(char) end
         if ENABLE_PLAYER_RING then ensureRing(char) end
@@ -786,7 +825,7 @@ RunService.Heartbeat:Connect(function()
     if hbCounter >= 60 then -- ~1s
         hbCounter = 0
 
-        -- Strip de skins com intervalo otimizado
+        -- Strip de skins extremo com intervalo otimizado
         if ENABLE_STRIP_SKINS and tick() - lastStripUpdate > ULTRA_PERFORMANCE.STRIP_INTERVAL then
             lastStripUpdate = tick()
             local players = Players:GetPlayers()
@@ -798,12 +837,13 @@ RunService.Heartbeat:Connect(function()
                 
                 local p = players[i]
                 if p ~= player and p.Character then
+                    -- Remover TUDO imediatamente
                     local children = p.Character:GetChildren()
                     for j = 1, #children do
                         local item = children[j]
                         if item:IsA("Accessory") or item:IsA("Hat")
                         or item:IsA("Shirt") or item:IsA("Pants")
-                        or item:IsA("ShirtGraphic") then
+                        or item:IsA("ShirtGraphic") or item:IsA("CharacterMesh") then
                             pcall(function() item:Destroy() end)
                         end
                     end
@@ -817,8 +857,14 @@ RunService.Heartbeat:Connect(function()
                             pcall(function()
                                 part.Color = Color3.fromRGB(163,162,165)
                                 part.CastShadow = false
+                                part.Material = Enum.Material.Plastic
+                                part.Reflectance = 0
+                                part.CanCollide = false
                             end)
                             processedThisFrame = processedThisFrame + 1
+                        elseif part:IsA("Decal") or part:IsA("Texture") or part:IsA("Sound")
+                        or part:IsA("ParticleEmitter") or part:IsA("Light") then
+                            pcall(function() part:Destroy() end)
                         end
                     end
                 end
@@ -878,4 +924,37 @@ task.spawn(function()
     end
 end)
 
-print(("[AntiLag ULTRA] OK | highlight/ring ativos | lighting ultra limpo | no-walls %.1fs | cache ativo | frame-skipping ativo"):format(ULTRA_PERFORMANCE.WALL_SCAN_INTERVAL))
+-- ===== LIMPEZA AGRESSIVA DE WORKSPACE =====
+local function aggressiveWorkspaceCleanup()
+    if not ULTRA_PERFORMANCE.ENABLE_AGGRESSIVE_CLEANUP then return end
+    
+    task.spawn(function()
+        while true do
+            task.wait(30) -- A cada 30 segundos
+            
+            -- Remover todos os sons
+            for _, sound in ipairs(workspace:GetDescendants()) do
+                if sound:IsA("Sound") then
+                    pcall(function() sound:Destroy() end)
+                end
+            end
+            
+            -- Remover partículas desnecessárias
+            for _, part in ipairs(workspace:GetDescendants()) do
+                if part:IsA("ParticleEmitter") or part:IsA("Fire") or part:IsA("Smoke") then
+                    pcall(function() part:Destroy() end)
+                end
+            end
+            
+            -- Remover luzes desnecessárias
+            for _, light in ipairs(workspace:GetDescendants()) do
+                if light:IsA("PointLight") or light:IsA("SpotLight") or light:IsA("SurfaceLight") then
+                    pcall(function() light:Destroy() end)
+                end
+            end
+        end
+    end)
+end
+aggressiveWorkspaceCleanup()
+
+print(("[AntiLag EXTREMO] OK | highlight/ring ativos | lighting EXTREMO limpo | no-walls %.1fs | cache ativo | frame-skipping ativo | UI mínima | strip EXTREMO"):format(ULTRA_PERFORMANCE.WALL_SCAN_INTERVAL))
