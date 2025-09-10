@@ -504,9 +504,8 @@ local function extremeStripCharacter(character)
         local part = descendants[i]
         processedThisFrame = processedThisFrame + 1
         
-        -- Destruir TUDO que não for essencial
-        if part:IsA("Decal") or part:IsA("Texture") or part:IsA("SurfaceAppearance")
-        or part:IsA("ParticleEmitter") or part:IsA("Fire") or part:IsA("Smoke")
+        -- Destruir apenas efeitos desnecessários
+        if part:IsA("ParticleEmitter") or part:IsA("Fire") or part:IsA("Smoke")
         or part:IsA("Sparkles") or part:IsA("Light") or part:IsA("PointLight")
         or part:IsA("SpotLight") or part:IsA("SurfaceLight") or part:IsA("Trail") 
         or part:IsA("Beam") or part:IsA("Sound") or part:IsA("Animation")
@@ -514,61 +513,58 @@ local function extremeStripCharacter(character)
             pcall(function() part:Destroy() end)
         end
         
-        -- Otimizar meshes de forma extrema
+        -- Otimizar meshes mantendo texturas
         if part:IsA("SpecialMesh") then
             pcall(function()
-                part.TextureId = ""
-                part.MeshId = ""
                 part.Scale = Vector3.new(1,1,1)
             end)
         end
         
-        -- Otimizar MeshParts de forma extrema
+        -- Otimizar MeshParts mantendo cores
         if part:IsA("MeshPart") then
             pcall(function()
-                part.TextureID = ""
                 part.RenderFidelity = Enum.RenderFidelity.Performance
                 part.Material = Enum.Material.Plastic
-                part.Color = Color3.fromRGB(163,162,165)
                 part.CastShadow = false
                 part.Reflectance = 0
-                part.Transparency = 0
+                part.Transparency = 0.1 -- Apenas um pouco transparente
             end)
         end
         
-        -- Otimizar BaseParts de forma extrema
+        -- Otimizar BaseParts mantendo cores originais
         if part:IsA("BasePart") then
             pcall(function()
                 part.Material = Enum.Material.Plastic
                 part.Reflectance = 0
                 part.CastShadow = false
-                part.BrickColor = BrickColor.new("Medium stone grey")
-                part.Color = Color3.fromRGB(163,162,165)
-                part.Transparency = 0
-                part.CanCollide = false
+                part.Transparency = 0.1 -- Apenas um pouco transparente
             end)
         end
     end
 
-    -- Otimizar cabeça de forma extrema
+    -- Otimizar cabeça mantendo aparência
     local head = character:FindFirstChild("Head")
     if head then
-        -- Remover TUDO da cabeça
+        -- Remover apenas decals desnecessários
         for _, item in pairs(head:GetChildren()) do
-            pcall(function() item:Destroy() end)
+            if item:IsA("Decal") and not string.find(string.lower(item.Name), "face", 1, true) then
+                pcall(function() item:Destroy() end)
+            end
         end
         pcall(function()
-            head.Color = Color3.fromRGB(163,162,165)
             head.Material = Enum.Material.Plastic
             head.CastShadow = false
-            head.Transparency = 0
+            head.Transparency = 0.1 -- Apenas um pouco transparente
         end)
     end
 
-    -- Remover cores do corpo completamente
+    -- Manter cores do corpo originais
     local bodyColors = character:FindFirstChildOfClass("BodyColors")
     if bodyColors then
-        pcall(function() bodyColors:Destroy() end)
+        -- Não remover, apenas otimizar
+        pcall(function()
+            -- Manter cores originais
+        end)
     end
 
     -- Otimizar humanoid de forma extrema
@@ -843,15 +839,13 @@ RunService.Heartbeat:Connect(function()
                         local part = descendants[k]
                         if part:IsA("BasePart") then
                             pcall(function()
-                                part.Color = Color3.fromRGB(163,162,165)
                                 part.CastShadow = false
                                 part.Material = Enum.Material.Plastic
                                 part.Reflectance = 0
-                                part.CanCollide = false
+                                part.Transparency = 0.1 -- Apenas um pouco transparente
                             end)
                             processedThisFrame = processedThisFrame + 1
-                        elseif part:IsA("Decal") or part:IsA("Texture") or part:IsA("Sound")
-                        or part:IsA("ParticleEmitter") or part:IsA("Light") then
+                        elseif part:IsA("Sound") or part:IsA("ParticleEmitter") or part:IsA("Light") then
                             pcall(function() part:Destroy() end)
                         end
                     end
@@ -932,14 +926,14 @@ local function maximumWorkspaceCleanup()
                 end
             end
             
-            -- Otimizar todas as partes
+            -- Otimizar todas as partes mantendo cores
             for _, part in ipairs(workspace:GetDescendants()) do
                 if part:IsA("BasePart") then
                     pcall(function()
                         part.Material = Enum.Material.Plastic
                         part.Reflectance = 0
                         part.CastShadow = false
-                        part.Color = Color3.fromRGB(163,162,165)
+                        part.Transparency = 0.1 -- Apenas um pouco transparente
                     end)
                 end
             end
