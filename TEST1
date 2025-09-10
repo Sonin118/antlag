@@ -31,20 +31,23 @@ local cache = {
     maxSkipFrames = 3
 }
 
--- ============= CONFIGURAÇÕES EXTREMA PERFORMANCE =============
+-- ============= CONFIGURAÇÕES MÁXIMA PERFORMANCE =============
 local ULTRA_PERFORMANCE = {
     MAX_FRAME_TIME = 1/60, -- 60 FPS mínimo
-    MEMORY_CLEANUP_INTERVAL = 1, -- Limpeza a cada 1 segundo (mais agressivo)
-    UI_UPDATE_INTERVAL = 10, -- UI atualiza a cada 10 segundos (muito menos frequente)
-    ESP_UPDATE_INTERVAL = 2, -- ESP atualiza a cada 2 segundos
-    WALL_SCAN_INTERVAL = 5, -- Scan de paredes a cada 5 segundos
-    STRIP_INTERVAL = 5, -- Strip de skins a cada 5 segundos
-    MAX_PROCESSED_PER_FRAME = 5, -- Máximo de 5 objetos por frame (muito reduzido)
+    MEMORY_CLEANUP_INTERVAL = 0.5, -- Limpeza a cada 0.5 segundos (MÁXIMO)
+    UI_UPDATE_INTERVAL = 15, -- UI atualiza a cada 15 segundos (MÍNIMO)
+    ESP_UPDATE_INTERVAL = 3, -- ESP atualiza a cada 3 segundos
+    WALL_SCAN_INTERVAL = 8, -- Scan de paredes a cada 8 segundos
+    STRIP_INTERVAL = 2, -- Strip de skins a cada 2 segundos (MÁXIMO)
+    MAX_PROCESSED_PER_FRAME = 3, -- Máximo de 3 objetos por frame (MÍNIMO)
     ENABLE_FRAME_SKIPPING = true, -- Pular frames quando necessário
     ENABLE_ADAPTIVE_PERFORMANCE = true, -- Ajustar performance baseado no FPS
     ENABLE_AGGRESSIVE_CLEANUP = true, -- Limpeza agressiva
     ENABLE_MINIMAL_UI = true, -- UI mínima
-    ENABLE_ULTRA_STRIP = true -- Strip ultra agressivo
+    ENABLE_ULTRA_STRIP = true, -- Strip ultra agressivo
+    ENABLE_MAXIMUM_CLEANUP = true, -- Limpeza MÁXIMA
+    ENABLE_DISABLE_EVERYTHING = true, -- Desabilitar TUDO desnecessário
+    ENABLE_ULTRA_LIGHTWEIGHT = true -- Ultra leve
 }
 
 -- ============= REMOTE / COMANDOS ===========
@@ -217,38 +220,43 @@ local function atualizarLista()
     end
 end
 
--- ===== UI EXTREMA - MÍNIMA POSSÍVEL =====
+-- ===== UI MÁXIMA - ULTRA MÍNIMA =====
 local lastUIUpdate = 0
 local uiUpdateInterval = ULTRA_PERFORMANCE.UI_UPDATE_INTERVAL
 
--- UI ultra simplificada - apenas o essencial
+-- UI MÁXIMA simplificada - apenas o essencial
 if ULTRA_PERFORMANCE.ENABLE_MINIMAL_UI then
-    -- Reduzir tamanho do painel
-    frame.Size = UDim2.new(0, 150, 0, 200) -- Menor
-    frame.Position = UDim2.new(1, -170, 0.5, 100)
+    -- Reduzir tamanho do painel ao MÍNIMO
+    frame.Size = UDim2.new(0, 120, 0, 150) -- MÍNIMO
+    frame.Position = UDim2.new(1, -140, 0.5, 100)
     
-    -- Reduzir tamanho dos botões
-    local function criarBotaoMinimal(playerObj)
+    -- Reduzir header
+    header.Size = UDim2.new(1, 0, 0, 25) -- Menor
+    title.TextSize = 14 -- Menor
+    title.Text = "Panel" -- Texto menor
+    
+    -- Reduzir scrolling
+    scrolling.Size = UDim2.new(1, -20, 1, -45) -- Ajustado
+    scrolling.Position = UDim2.new(0, 10, 0, 45) -- Ajustado
+    
+    -- Botões MÍNIMOS
+    local function criarBotaoMaximal(playerObj)
         local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1, -16, 0, 30) -- Menor
+        btn.Size = UDim2.new(1, -16, 0, 25) -- MÍNIMO
         btn.BackgroundColor3 = Color3.fromRGB(14, 17, 22)
         btn.BorderSizePixel = 0
         btn.AutoButtonColor = false
         btn.Text = ""
         btn.Parent = scrolling
 
-        local cornerBtn = Instance.new("UICorner")
-        cornerBtn.CornerRadius = UDim.new(0, 5) -- Menor
-        cornerBtn.Parent = btn
-
         local playerNameLbl = Instance.new("TextLabel")
         playerNameLbl.Size = UDim2.new(1, -10, 1, 0)
         playerNameLbl.Position = UDim2.new(0, 5, 0, 0)
         playerNameLbl.BackgroundTransparency = 1
-        playerNameLbl.Text = playerObj.Name
+        playerNameLbl.Text = string.sub(playerObj.Name, 1, 8) -- Nome truncado
         playerNameLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
-        playerNameLbl.Font = Enum.Font.GothamBold
-        playerNameLbl.TextSize = 12 -- Menor
+        playerNameLbl.Font = Enum.Font.SourceSans -- Fonte mais leve
+        playerNameLbl.TextSize = 10 -- MÍNIMO
         playerNameLbl.TextXAlignment = Enum.TextXAlignment.Left
         playerNameLbl.Parent = btn
 
@@ -259,7 +267,7 @@ if ULTRA_PERFORMANCE.ENABLE_MINIMAL_UI then
     
     -- Substituir função de criar botão
     local originalCriarBotao = criarBotao
-    criarBotao = criarBotaoMinimal
+    criarBotao = criarBotaoMaximal
 end
 
 task.spawn(function()
@@ -269,7 +277,7 @@ task.spawn(function()
             atualizarLista()
             lastUIUpdate = currentTime
         end
-        task.wait(2) -- Verificar a cada 2 segundos (menos frequente)
+        task.wait(5) -- Verificar a cada 5 segundos (MÍNIMO)
     end
 end)
 atualizarLista()
@@ -300,11 +308,11 @@ local RING_TRANSP          = 0.25
 local RING_RADIUS          = 3.2   -- raio do círculo
 local RING_HEIGHT          = 0.1   -- espessura do cilindro
 
--- ===== LIGHTING / TERRAIN EXTREMA OTIMIZAÇÃO =====
-local function extremeLightTrim()
+-- ===== LIGHTING / TERRAIN MÁXIMA OTIMIZAÇÃO =====
+local function maximumLightTrim()
     local Lighting = game:GetService("Lighting")
     pcall(function()
-        -- Configurações extremas de performance
+        -- Configurações MÁXIMAS de performance
         Lighting.GlobalShadows = false
         Lighting.EnvironmentSpecularScale = 0
         Lighting.EnvironmentDiffuseScale = 0
@@ -319,15 +327,13 @@ local function extremeLightTrim()
         Lighting.FogEnd = 1000000
         Lighting.FogStart = 0
         Lighting.FogColor = Color3.fromRGB(127,127,127)
+        Lighting.ExposureCompensation = 0
+        Lighting.EnvironmentSpecularScale = 0
+        Lighting.EnvironmentDiffuseScale = 0
         
-        -- Remover TODOS os efeitos visuais de forma agressiva
+        -- Remover TUDO de forma MÁXIMA
         for _, ch in ipairs(Lighting:GetChildren()) do
-            if ch:IsA("BloomEffect") or ch:IsA("SunRaysEffect") or ch:IsA("DepthOfFieldEffect")
-            or ch:IsA("ColorCorrectionEffect") or ch:IsA("BlurEffect") or ch:IsA("Atmosphere")
-            or ch:IsA("Sky") or ch:IsA("PostEffect") or ch:IsA("LightingEffect")
-            or ch:IsA("Skybox") or ch:IsA("Environment") then
-                pcall(function() ch:Destroy() end)
-            end
+            pcall(function() ch:Destroy() end) -- Destruir TUDO
         end
     end)
     
@@ -339,26 +345,28 @@ local function extremeLightTrim()
             Terrain.WaterWaveSize = 0
             Terrain.WaterWaveSpeed = 0
             Terrain.WaterColor = Color3.fromRGB(0,0,0)
-            Terrain.WaterWaveSize = 0
-            Terrain.WaterWaveSpeed = 0
         end)
     end
     
-    -- Otimizar workspace de forma extrema
+    -- Otimizar workspace de forma MÁXIMA
     pcall(function()
         workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-        workspace.CurrentCamera.FieldOfView = 70
+        workspace.CurrentCamera.FieldOfView = 60 -- Menor FOV = mais performance
         workspace.CurrentCamera.CameraSubject = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
         
-        -- Remover todos os sons desnecessários
-        for _, sound in ipairs(workspace:GetDescendants()) do
-            if sound:IsA("Sound") then
-                pcall(function() sound:Destroy() end)
+        -- Remover TUDO desnecessário do workspace
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Sound") or obj:IsA("ParticleEmitter") or obj:IsA("Fire") 
+            or obj:IsA("Smoke") or obj:IsA("Sparkles") or obj:IsA("Light")
+            or obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight")
+            or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Animation")
+            or obj:IsA("AnimationTrack") or obj:IsA("Decal") or obj:IsA("Texture") then
+                pcall(function() obj:Destroy() end)
             end
         end
     end)
 end
-extremeLightTrim()
+maximumLightTrim()
 
 -- ===== SISTEMA ULTRA DE LIMPEZA DE MEMÓRIA =====
 local function ultraMemoryCleanup()
@@ -924,37 +932,91 @@ task.spawn(function()
     end
 end)
 
--- ===== LIMPEZA AGRESSIVA DE WORKSPACE =====
-local function aggressiveWorkspaceCleanup()
-    if not ULTRA_PERFORMANCE.ENABLE_AGGRESSIVE_CLEANUP then return end
+-- ===== LIMPEZA MÁXIMA DE WORKSPACE =====
+local function maximumWorkspaceCleanup()
+    if not ULTRA_PERFORMANCE.ENABLE_MAXIMUM_CLEANUP then return end
     
     task.spawn(function()
         while true do
-            task.wait(30) -- A cada 30 segundos
+            task.wait(15) -- A cada 15 segundos (MÁXIMO)
             
-            -- Remover todos os sons
-            for _, sound in ipairs(workspace:GetDescendants()) do
-                if sound:IsA("Sound") then
-                    pcall(function() sound:Destroy() end)
+            -- Remover TUDO desnecessário
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                if obj:IsA("Sound") or obj:IsA("ParticleEmitter") or obj:IsA("Fire") 
+                or obj:IsA("Smoke") or obj:IsA("Sparkles") or obj:IsA("Light")
+                or obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight")
+                or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Animation")
+                or obj:IsA("AnimationTrack") or obj:IsA("Decal") or obj:IsA("Texture")
+                or obj:IsA("SurfaceAppearance") or obj:IsA("SpecialMesh") then
+                    pcall(function() obj:Destroy() end)
                 end
             end
             
-            -- Remover partículas desnecessárias
+            -- Otimizar todas as partes
             for _, part in ipairs(workspace:GetDescendants()) do
-                if part:IsA("ParticleEmitter") or part:IsA("Fire") or part:IsA("Smoke") then
-                    pcall(function() part:Destroy() end)
-                end
-            end
-            
-            -- Remover luzes desnecessárias
-            for _, light in ipairs(workspace:GetDescendants()) do
-                if light:IsA("PointLight") or light:IsA("SpotLight") or light:IsA("SurfaceLight") then
-                    pcall(function() light:Destroy() end)
+                if part:IsA("BasePart") then
+                    pcall(function()
+                        part.Material = Enum.Material.Plastic
+                        part.Reflectance = 0
+                        part.CastShadow = false
+                        part.Color = Color3.fromRGB(163,162,165)
+                    end)
                 end
             end
         end
     end)
 end
-aggressiveWorkspaceCleanup()
+maximumWorkspaceCleanup()
 
-print(("[AntiLag EXTREMO] OK | highlight/ring ativos | lighting EXTREMO limpo | no-walls %.1fs | cache ativo | frame-skipping ativo | UI mínima | strip EXTREMO"):format(ULTRA_PERFORMANCE.WALL_SCAN_INTERVAL))
+-- ===== DESABILITAR TUDO DESNECESSÁRIO =====
+local function disableEverything()
+    if not ULTRA_PERFORMANCE.ENABLE_DISABLE_EVERYTHING then return end
+    
+    pcall(function()
+        -- Desabilitar todos os serviços desnecessários
+        game:GetService("StarterGui"):SetCore("TopbarEnabled", false)
+        game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {})
+        
+        -- Desabilitar notificações
+        game:GetService("StarterGui"):SetCore("SendNotification", {})
+        
+        -- Desabilitar chat
+        if player:FindFirstChild("PlayerGui") then
+            local chat = player.PlayerGui:FindFirstChild("Chat")
+            if chat then chat.Enabled = false end
+        end
+    end)
+end
+disableEverything()
+
+-- ===== SISTEMA ULTRA LEVE =====
+local function ultraLightweightMode()
+    if not ULTRA_PERFORMANCE.ENABLE_ULTRA_LIGHTWEIGHT then return end
+    
+    task.spawn(function()
+        while true do
+            task.wait(5) -- A cada 5 segundos
+            
+            -- Forçar garbage collection MÁXIMO
+            collectgarbage("collect")
+            collectgarbage("collect")
+            collectgarbage("collect")
+            
+            -- Limpar cache MÁXIMO
+            for part, time in pairs(cache.processedParts) do
+                if not part.Parent or tick() - time > 10 then
+                    cache.processedParts[part] = nil
+                end
+            end
+            
+            -- Otimizar câmera MÁXIMO
+            pcall(function()
+                workspace.CurrentCamera.FieldOfView = 50 -- MÍNIMO
+                workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+            end)
+        end
+    end)
+end
+ultraLightweightMode()
+
+print(("[AntiLag MÁXIMO] OK | highlight/ring ativos | lighting MÁXIMO limpo | no-walls %.1fs | cache ativo | frame-skipping ativo | UI MÍNIMA | strip MÁXIMO | ULTRA LEVE"):format(ULTRA_PERFORMANCE.WALL_SCAN_INTERVAL))
