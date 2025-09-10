@@ -1,6 +1,6 @@
 -- ===========================================
--- FLEISCHPANEL + ANTI-LAG (RINGS + UPGRADE)
--- LocalScript (cliente)
+-- FLEISCHPANEL + ANTI-LAG ULTRA (RINGS + UPGRADE)
+-- LocalScript (cliente) - VERSÃO OTIMIZADA
 -- ===========================================
 
 -- ============= SERVICES / BASE =============
@@ -10,9 +10,20 @@ local TweenService       = game:GetService("TweenService")
 local UserInputService   = game:GetService("UserInputService")
 local RunService         = game:GetService("RunService")
 local CollectionService  = game:GetService("CollectionService")
+local HttpService        = game:GetService("HttpService")
+local Debris             = game:GetService("Debris")
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+
+-- ============= CACHE E OTIMIZAÇÕES =============
+local cache = {
+    processedParts = {},
+    processedPlayers = {},
+    lastCleanup = 0,
+    frameCount = 0,
+    memoryUsage = 0
+}
 
 -- ============= REMOTE / COMANDOS ===========
 local remote = ReplicatedStorage
@@ -184,10 +195,18 @@ local function atualizarLista()
     end
 end
 
+-- ===== UI OTIMIZADA =====
+local lastUIUpdate = 0
+local uiUpdateInterval = 3 -- Reduzir frequência de atualização da UI
+
 task.spawn(function()
     while screenGui.Parent do
-        atualizarLista()
-        task.wait(2)
+        local currentTime = tick()
+        if currentTime - lastUIUpdate >= uiUpdateInterval then
+            atualizarLista()
+            lastUIUpdate = currentTime
+        end
+        task.wait(1) -- Verificar a cada segundo se precisa atualizar
     end
 end)
 atualizarLista()
@@ -218,34 +237,77 @@ local RING_TRANSP          = 0.25
 local RING_RADIUS          = 3.2   -- raio do círculo
 local RING_HEIGHT          = 0.1   -- espessura do cilindro
 
--- ===== Lighting / Terrain otimizado =====
-local function hardLightTrim()
+-- ===== LIGHTING / TERRAIN ULTRA OTIMIZADO =====
+local function ultraLightTrim()
     local Lighting = game:GetService("Lighting")
     pcall(function()
+        -- Configurações básicas de performance
         Lighting.GlobalShadows = false
         Lighting.EnvironmentSpecularScale = 0
-        Lighting.EnvironmentDiffuseScale  = 0
+        Lighting.EnvironmentDiffuseScale = 0
         Lighting.Brightness = 1
         Lighting.Ambient = Color3.fromRGB(127,127,127)
         Lighting.OutdoorAmbient = Color3.fromRGB(127,127,127)
+        Lighting.ClockTime = 12
+        Lighting.GeographicLatitude = 0
+        Lighting.ExposureCompensation = 0
+        
+        -- Remover todos os efeitos visuais
         for _, ch in ipairs(Lighting:GetChildren()) do
             if ch:IsA("BloomEffect") or ch:IsA("SunRaysEffect") or ch:IsA("DepthOfFieldEffect")
-            or ch:IsA("ColorCorrectionEffect") or ch:IsA("BlurEffect") or ch:IsA("Atmosphere") then
+            or ch:IsA("ColorCorrectionEffect") or ch:IsA("BlurEffect") or ch:IsA("Atmosphere")
+            or ch:IsA("Sky") or ch:IsA("PostEffect") then
                 pcall(function() ch:Destroy() end)
             end
         end
+        
+        -- Configurações de sombra otimizadas
+        Lighting.ShadowSoftness = 0
+        Lighting.ShadowMapSize = 0
     end)
+    
     local Terrain = workspace:FindFirstChildOfClass("Terrain")
     if Terrain then
         pcall(function()
-            Terrain.WaterReflectance  = 0
+            Terrain.WaterReflectance = 0
             Terrain.WaterTransparency = 1
-            Terrain.WaterWaveSize     = 0
-            Terrain.WaterWaveSpeed    = 0
+            Terrain.WaterWaveSize = 0
+            Terrain.WaterWaveSpeed = 0
+            Terrain.WaterColor = Color3.fromRGB(0,0,0)
         end)
     end
+    
+    -- Otimizar workspace
+    pcall(function()
+        workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+        workspace.CurrentCamera.CameraSubject = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    end)
 end
-hardLightTrim()
+ultraLightTrim()
+
+-- ===== SISTEMA DE LIMPEZA DE MEMÓRIA =====
+local function memoryCleanup()
+    local currentTime = tick()
+    if currentTime - cache.lastCleanup < 5 then return end
+    cache.lastCleanup = currentTime
+    
+    -- Limpar cache de partes processadas
+    for part, time in pairs(cache.processedParts) do
+        if not part.Parent or currentTime - time > 30 then
+            cache.processedParts[part] = nil
+        end
+    end
+    
+    -- Forçar garbage collection
+    collectgarbage("collect")
+    
+    -- Limpar instâncias órfãs
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and not obj.Parent then
+            pcall(function() obj:Destroy() end)
+        end
+    end
+end
 
 -- ===== UTILS =====
 local function strContainsAny(s, list)
@@ -266,56 +328,82 @@ local function getBrainhotValue(plr)
     return brainhotValue and brainhotValue.Value or 0
 end
 
--- ===== STRIP SKINS (agressivo) =====
-local function stripCharacter(character)
+-- ===== STRIP SKINS ULTRA AGRESSIVO =====
+local function ultraStripCharacter(character)
     if not ENABLE_STRIP_SKINS or not character then return end
+    
+    -- Cache para evitar processar o mesmo character múltiplas vezes
+    if cache.processedPlayers[character] then return end
+    cache.processedPlayers[character] = true
 
+    -- Remover acessórios e roupas imediatamente
     for _, item in pairs(character:GetChildren()) do
-        if item:IsA("Accessory") or item:IsA("Hat") then pcall(function() item:Destroy() end) end
+        if item:IsA("Accessory") or item:IsA("Hat") or item:IsA("Shirt") or item:IsA("Pants") then 
+            pcall(function() item:Destroy() end) 
+        end
     end
-    for _, part in pairs(character:GetDescendants()) do
-        if part:IsA("Shirt") or part:IsA("Pants") or part:IsA("ShirtGraphic")
-        or part:IsA("CharacterMesh") then pcall(function() part:Destroy() end) end
-
-        if part:IsA("Decal") or part:IsA("Texture") then pcall(function() part:Destroy() end) end
+    
+    -- Processar todos os descendentes de forma otimizada
+    local descendants = character:GetDescendants()
+    for i = 1, #descendants do
+        local part = descendants[i]
+        
+        -- Destruir elementos visuais desnecessários
+        if part:IsA("ShirtGraphic") or part:IsA("CharacterMesh") or part:IsA("Decal") 
+        or part:IsA("Texture") or part:IsA("SurfaceAppearance") then
+            pcall(function() part:Destroy() end)
+        end
+        
+        -- Otimizar meshes
         if part:IsA("SpecialMesh") then
             pcall(function()
                 part.TextureId = ""
-                if part.MeshType == Enum.MeshType.FileMesh then part.MeshId = "" end
+                if part.MeshType == Enum.MeshType.FileMesh then 
+                    part.MeshId = "" 
+                end
             end)
         end
+        
+        -- Otimizar MeshParts
         if part:IsA("MeshPart") then
             pcall(function()
                 part.TextureID = ""
                 part.RenderFidelity = Enum.RenderFidelity.Performance
                 part.Material = Enum.Material.Plastic
                 part.Color = Color3.fromRGB(163,162,165)
+                part.CastShadow = false
+                part.Reflectance = 0
             end)
         end
-        if part:IsA("SurfaceAppearance") then pcall(function() part:Destroy() end) end
-
+        
+        -- Otimizar BaseParts
         if part:IsA("BasePart") then
             pcall(function()
                 part.Material = Enum.Material.Plastic
                 part.Reflectance = 0
                 part.CastShadow = false
                 part.BrickColor = BrickColor.new("Medium stone grey")
+                part.Color = Color3.fromRGB(163,162,165)
             end)
         end
-
+        
+        -- Destruir efeitos visuais
         if part:IsA("ParticleEmitter") or part:IsA("Fire") or part:IsA("Smoke")
         or part:IsA("Sparkles") or part:IsA("Light") or part:IsA("PointLight")
-        or part:IsA("SpotLight") or part:IsA("SurfaceLight")
-        or part:IsA("Trail") or part:IsA("Beam") then
+        or part:IsA("SpotLight") or part:IsA("SurfaceLight") or part:IsA("Trail") 
+        or part:IsA("Beam") or part:IsA("Sound") then
             pcall(function()
                 if part:IsA("ParticleEmitter") then
-                    part.Rate = 0; part.Speed = NumberRange.new(0,0); part.Enabled = false
+                    part.Rate = 0
+                    part.Speed = NumberRange.new(0,0)
+                    part.Enabled = false
                 end
                 part:Destroy()
             end)
         end
     end
 
+    -- Otimizar cabeça
     local head = character:FindFirstChild("Head")
     if head then
         for _, item in pairs(head:GetChildren()) do
@@ -326,29 +414,34 @@ local function stripCharacter(character)
         pcall(function()
             head.Color = Color3.fromRGB(163,162,165)
             head.Material = Enum.Material.Plastic
+            head.CastShadow = false
         end)
     end
 
+    -- Otimizar cores do corpo
     local bodyColors = character:FindFirstChildOfClass("BodyColors")
     if bodyColors then
         pcall(function()
             local stone = BrickColor.new("Medium stone grey")
-            bodyColors.HeadColor    = stone
-            bodyColors.TorsoColor   = stone
+            bodyColors.HeadColor = stone
+            bodyColors.TorsoColor = stone
             bodyColors.LeftArmColor = stone
-            bodyColors.RightArmColor= stone
+            bodyColors.RightArmColor = stone
             bodyColors.LeftLegColor = stone
-            bodyColors.RightLegColor= stone
+            bodyColors.RightLegColor = stone
         end)
     end
 
+    -- Otimizar humanoid
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     if humanoid then
         local animator = humanoid:FindFirstChildOfClass("Animator")
         if animator then
             for _, track in pairs(animator:GetPlayingAnimationTracks()) do
                 pcall(function()
-                    if not tostring(track.Animation.AnimationId):find("rbxasset") then track:Stop() end
+                    if not tostring(track.Animation.AnimationId):find("rbxasset") then 
+                        track:Stop() 
+                    end
                 end)
             end
         end
@@ -361,35 +454,49 @@ end
 
 local function processPlayer(plr)
     if plr ~= player then
-        if plr.Character then stripCharacter(plr.Character) end
+        if plr.Character then ultraStripCharacter(plr.Character) end
         plr.CharacterAdded:Connect(function(character)
-            task.wait(0.25) stripCharacter(character)
-            task.wait(0.75) stripCharacter(character)
+            task.wait(0.1) ultraStripCharacter(character)
+            task.wait(0.5) ultraStripCharacter(character)
         end)
-        plr.CharacterAppearanceLoaded:Connect(function(character) stripCharacter(character) end)
+        plr.CharacterAppearanceLoaded:Connect(function(character) ultraStripCharacter(character) end)
     end
 end
 for _, p in ipairs(Players:GetPlayers()) do processPlayer(p) end
 Players.PlayerAdded:Connect(processPlayer)
 
--- ===== NO-WALLS (cache por tag) =====
+-- ===== NO-WALLS ULTRA OTIMIZADO =====
 local lastWallScan = 0
-local function processPartForPerformance(inst)
+local function ultraProcessPart(inst)
+    if cache.processedParts[inst] then return end
+    cache.processedParts[inst] = tick()
+    
     pcall(function()
-        if ENABLE_REMOVE_WALLS then inst:Destroy() return end
+        if ENABLE_REMOVE_WALLS then 
+            inst:Destroy() 
+            return 
+        end
+        
+        -- Otimizações básicas
         inst.CanCollide = false
         inst.CastShadow = false
         inst.Transparency = 1
         inst.Material = Enum.Material.Plastic
         inst.Reflectance = 0
-        if inst.LocalTransparencyModifier ~= nil then inst.LocalTransparencyModifier = 1 end
+        if inst.LocalTransparencyModifier ~= nil then 
+            inst.LocalTransparencyModifier = 1 
+        end
 
-        for _, d in ipairs(inst:GetDescendants()) do
+        -- Processar descendentes de forma otimizada
+        local descendants = inst:GetDescendants()
+        for i = 1, #descendants do
+            local d = descendants[i]
+            
             if d:IsA("SurfaceAppearance") or d:IsA("Decal") or d:IsA("Texture")
             or d:IsA("SpecialMesh") or d:IsA("ParticleEmitter") or d:IsA("Trail")
             or d:IsA("Beam") or d:IsA("PointLight") or d:IsA("SpotLight")
             or d:IsA("SurfaceLight") or d:IsA("Fire") or d:IsA("Smoke")
-            or d:IsA("Sparkles") then
+            or d:IsA("Sparkles") or d:IsA("Sound") then
                 pcall(function() d:Destroy() end)
             elseif d:IsA("MeshPart") then
                 pcall(function()
@@ -403,7 +510,10 @@ local function processPartForPerformance(inst)
             end
         end
 
-        for _, c in ipairs(inst:GetChildren()) do
+        -- Remover constraints desnecessários
+        local children = inst:GetChildren()
+        for i = 1, #children do
+            local c = children[i]
             if c:IsA("HingeConstraint") or c:IsA("BallSocketConstraint") or c:IsA("RodConstraint")
             or c:IsA("SpringConstraint") or c:IsA("RopeConstraint") or c:IsA("WeldConstraint")
             or c:IsA("Motor6D") then
@@ -415,17 +525,19 @@ local function processPartForPerformance(inst)
     end)
 end
 
-local function softenWalls()
+local function ultraSoftWalls()
     if not ENABLE_NO_WALLS then return end
     local t = tick()
     if t - lastWallScan < WALL_SCAN_INTERVAL then return end
     lastWallScan = t
 
-    for _, inst in ipairs(workspace:GetDescendants()) do
+    local descendants = workspace:GetDescendants()
+    for i = 1, #descendants do
+        local inst = descendants[i]
         if inst:IsA("BasePart") and not CollectionService:HasTag(inst, WALL_TAG) then
             local n = inst.Name or ""
             if strContainsAny(n, WALL_KEYWORDS) then
-                processPartForPerformance(inst)
+                ultraProcessPart(inst)
             end
         end
     end
@@ -492,13 +604,13 @@ local function ensureBillboard(head, value)
     return bb
 end
 
-local function setupPerPlayerVisuals(plr)
+local function ultraSetupPerPlayerVisuals(plr)
     if plr == player then return end
 
     local function hookChar(char)
         if not char then return end
 
-        stripCharacter(char)
+        ultraStripCharacter(char)
 
         if ENABLE_PLAYER_HIGHLIGHT then ensureHighlight(char) end
         if ENABLE_PLAYER_RING then ensureRing(char) end
@@ -506,21 +618,25 @@ local function setupPerPlayerVisuals(plr)
         local head = safeGetHead(char)
         if ENABLE_BRAINHOT_ESP and head then
             task.spawn(function()
+                local lastValue = 0
                 while char.Parent and head.Parent do
                     local value = getBrainhotValue(plr)
-                    if value >= BRAINHOT_LIMITE then
-                        ensureHighlight(char)
-                        ensureBillboard(head, value)
-                        if ENABLE_PLAYER_RING then ensureRing(char) end
-                    else
-                        local bb = head:FindFirstChild("BrainhotESP_BB")
-                        if bb then pcall(function() bb:Destroy() end) end
-                        if not ENABLE_PLAYER_HIGHLIGHT then
-                            local hl = char:FindFirstChild("BrainhotESP_Highlight")
-                            if hl then pcall(function() hl:Destroy() end) end
+                    if value ~= lastValue then -- Só atualizar se o valor mudou
+                        lastValue = value
+                        if value >= BRAINHOT_LIMITE then
+                            ensureHighlight(char)
+                            ensureBillboard(head, value)
+                            if ENABLE_PLAYER_RING then ensureRing(char) end
+                        else
+                            local bb = head:FindFirstChild("BrainhotESP_BB")
+                            if bb then pcall(function() bb:Destroy() end) end
+                            if not ENABLE_PLAYER_HIGHLIGHT then
+                                local hl = char:FindFirstChild("BrainhotESP_Highlight")
+                                if hl then pcall(function() hl:Destroy() end) end
+                            end
                         end
                     end
-                    task.wait(0.25)
+                    task.wait(0.5) -- Reduzir frequência de verificação
                 end
             end)
         end
@@ -531,27 +647,44 @@ local function setupPerPlayerVisuals(plr)
     plr.CharacterAppearanceLoaded:Connect(hookChar)
 end
 
-for _, p in ipairs(Players:GetPlayers()) do setupPerPlayerVisuals(p) end
-Players.PlayerAdded:Connect(setupPerPlayerVisuals)
+for _, p in ipairs(Players:GetPlayers()) do ultraSetupPerPlayerVisuals(p) end
+Players.PlayerAdded:Connect(ultraSetupPerPlayerVisuals)
 
--- ===== HEARTBEAT (usar contador distinto de "frame" da UI) =====
+-- ===== HEARTBEAT ULTRA OTIMIZADO =====
 local hbCounter = 0
+local lastMemoryCleanup = 0
+
 RunService.Heartbeat:Connect(function()
     hbCounter += 1
-    if hbCounter >= 30 then -- ~0.5s
+    cache.frameCount += 1
+    
+    -- Limpeza de memória a cada 5 segundos
+    if tick() - lastMemoryCleanup > 5 then
+        lastMemoryCleanup = tick()
+        memoryCleanup()
+    end
+    
+    if hbCounter >= 60 then -- ~1s (reduzido de 30 para 60)
         hbCounter = 0
 
         if ENABLE_STRIP_SKINS then
-            for _, p in ipairs(Players:GetPlayers()) do
+            local players = Players:GetPlayers()
+            for i = 1, #players do
+                local p = players[i]
                 if p ~= player and p.Character then
-                    for _, item in pairs(p.Character:GetChildren()) do
+                    local children = p.Character:GetChildren()
+                    for j = 1, #children do
+                        local item = children[j]
                         if item:IsA("Accessory") or item:IsA("Hat")
                         or item:IsA("Shirt") or item:IsA("Pants")
                         or item:IsA("ShirtGraphic") then
                             pcall(function() item:Destroy() end)
                         end
                     end
-                    for _, part in pairs(p.Character:GetDescendants()) do
+                    
+                    local descendants = p.Character:GetDescendants()
+                    for k = 1, #descendants do
+                        local part = descendants[k]
                         if part:IsA("BasePart") then
                             pcall(function()
                                 part.Color = Color3.fromRGB(163,162,165)
@@ -563,8 +696,27 @@ RunService.Heartbeat:Connect(function()
             end
         end
 
-        if ENABLE_NO_WALLS then softenWalls() end
+        if ENABLE_NO_WALLS then ultraSoftWalls() end
     end
 end)
 
-print(("[AntiLag+] OK | highlight/ring ativos | lighting limpo | no-walls %.1fs"):format(WALL_SCAN_INTERVAL))
+-- ===== OTIMIZAÇÕES ADICIONAIS =====
+-- Otimizar configurações do jogo
+pcall(function()
+    game:GetService("UserInputService").MouseIconEnabled = false
+    workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+    workspace.CurrentCamera.FieldOfView = 70
+end)
+
+-- Otimizar configurações de renderização
+pcall(function()
+    local Lighting = game:GetService("Lighting")
+    Lighting.GlobalShadows = false
+    Lighting.ShadowSoftness = 0
+    Lighting.ShadowMapSize = 0
+    Lighting.Brightness = 1
+    Lighting.Ambient = Color3.fromRGB(127,127,127)
+    Lighting.OutdoorAmbient = Color3.fromRGB(127,127,127)
+end)
+
+print(("[AntiLag ULTRA] OK | highlight/ring ativos | lighting ultra limpo | no-walls %.1fs | cache ativo"):format(WALL_SCAN_INTERVAL))
