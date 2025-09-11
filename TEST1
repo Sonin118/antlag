@@ -1,5 +1,5 @@
--- FleischPanel Lite (com Auto-Kick + Extras) — Layout com coluna vertical e Top HUD
--- Seguro: sem wallhack/ESP, sem destruição de objetos, sem remotes contra outros players.
+-- FleischPanel Lite — UI fixa, botões dentro, Top HUD FPS rainbow
+-- Seguro: sem wallhack/ESP/remotes abusivos.
 
 -- ============ SERVICES ============
 local Players          = game:GetService("Players")
@@ -17,510 +17,360 @@ local playerGui   = LocalPlayer:WaitForChild("PlayerGui")
 -- ============ THEME ============
 local theme = "dark"
 local palette = {
-    dark = {
-        BG = Color3.fromRGB(14, 17, 22),
-        Stroke = Color3.fromRGB(70, 70, 100),
-        Text = Color3.fromRGB(255, 255, 255),
-        AccentBtn = Color3.fromRGB(24, 28, 36),
-        AccentRed = Color3.fromRGB(170, 35, 45),
-        AccentRedD = Color3.fromRGB(90, 20, 25),
-        ScrollBar = Color3.fromRGB(100, 100, 120),
-        ToastBG = Color3.fromRGB(20, 24, 31),
-        Muted = Color3.fromRGB(180, 185, 200),
-    },
-    light = {
-        BG = Color3.fromRGB(240, 242, 247),
-        Stroke = Color3.fromRGB(170, 170, 190),
-        Text = Color3.fromRGB(20, 20, 25),
-        AccentBtn = Color3.fromRGB(225, 229, 238),
-        AccentRed = Color3.fromRGB(210, 60, 70),
-        AccentRedD = Color3.fromRGB(160, 40, 50),
-        ScrollBar = Color3.fromRGB(140, 140, 170),
-        ToastBG = Color3.fromRGB(235, 238, 245),
-        Muted = Color3.fromRGB(70, 75, 90),
-    }
+  dark = {
+    BG = Color3.fromRGB(14,17,22), Stroke = Color3.fromRGB(70,70,100),
+    Text = Color3.fromRGB(255,255,255), Muted = Color3.fromRGB(180,185,200),
+    AccentBtn = Color3.fromRGB(24,28,36), AccentRed = Color3.fromRGB(170,35,45),
+    AccentRedD = Color3.fromRGB(90,20,25), ScrollBar = Color3.fromRGB(100,100,120),
+    ToastBG = Color3.fromRGB(20,24,31)
+  },
+  light = {
+    BG = Color3.fromRGB(240,242,247), Stroke = Color3.fromRGB(170,170,190),
+    Text = Color3.fromRGB(20,20,25), Muted = Color3.fromRGB(70,75,90),
+    AccentBtn = Color3.fromRGB(225,229,238), AccentRed = Color3.fromRGB(210,60,70),
+    AccentRedD = Color3.fromRGB(160,40,50), ScrollBar = Color3.fromRGB(140,140,170),
+    ToastBG = Color3.fromRGB(235,238,245)
+  }
 }
 local function C(k) return palette[theme][k] end
 
--- ============ SELF-KICK ============
+-- ============ CONFIG ============
 local ENABLE_SELF_KICK  = true
 local SELF_KICK_KEY     = Enum.KeyCode.K
 local SELF_KICK_MESSAGE = "Você foi removido pelo sistema de moderação.\n(Code: 268)"
 
--- ============ LIMPA UIs ANTIGAS ============
-for _, name in ipairs({"CmdUI", "CmdUI_TopStats"}) do
-    local g = playerGui:FindFirstChild(name)
-    if g then g:Destroy() end
-end
+-- ============ CLEANUP ============
+for _,n in ipairs({"CmdUI","CmdUI_TopStats"}) do local g=playerGui:FindFirstChild(n); if g then g:Destroy() end end
 
 -- ============ TOP HUD (FPS rainbow + Ping) ============
 local topGui = Instance.new("ScreenGui")
-topGui.Name = "CmdUI_TopStats"
-topGui.ResetOnSpawn = false
-topGui.DisplayOrder = 1000
-topGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-topGui.Parent = playerGui
+topGui.Name = "CmdUI_TopStats"; topGui.ResetOnSpawn=false; topGui.DisplayOrder=1000
+topGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; topGui.Parent = playerGui
 
-local function topInsetY()
-    local _, br = GuiService:GetGuiInset()
-    return br.Y -- usa safe area superior
+local function safeTopOffset()
+  local tl, br = GuiService:GetGuiInset()
+  -- tl.Y é a barra superior segura
+  return tl.Y + 6
 end
 
 local topFrame = Instance.new("Frame")
-topFrame.Name = "TopStats"
-topFrame.AnchorPoint = Vector2.new(0.5, 0)
-topFrame.Position = UDim2.new(0.5, 0, 0, topInsetY())
-topFrame.Size = UDim2.new(0, 280, 0, 28)
-topFrame.BackgroundTransparency = 1
-topFrame.Parent = topGui
+topFrame.AnchorPoint = Vector2.new(0.5,0); topFrame.Position = UDim2.new(0.5,0,0,safeTopOffset())
+topFrame.Size = UDim2.new(0,300,0,28); topFrame.BackgroundTransparency=1; topFrame.Parent = topGui
 
-local topLayout = Instance.new("UIListLayout")
-topLayout.FillDirection = Enum.FillDirection.Horizontal
-topLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-topLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-topLayout.Padding = UDim.new(0, 10)
-topLayout.Parent = topFrame
+local hl = Instance.new("UIListLayout", topFrame)
+hl.FillDirection = Enum.FillDirection.Horizontal; hl.Padding = UDim.new(0,10)
+hl.HorizontalAlignment = Enum.HorizontalAlignment.Center; hl.VerticalAlignment = Enum.VerticalAlignment.Center
 
-local function topLabel(txt, size, bold)
-    local l = Instance.new("TextLabel")
-    l.BackgroundTransparency = 0.35
-    l.Size = UDim2.new(0, 130, 1, -4)
-    l.Text = txt
-    l.TextColor3 = C("Text")
-    l.Font = bold and Enum.Font.GothamBold or Enum.Font.Gotham
-    l.TextSize = size or 14
-    l.TextXAlignment = Enum.TextXAlignment.Center
-    l.TextYAlignment = Enum.TextYAlignment.Center
-    l.BackgroundColor3 = (theme == "dark") and Color3.fromRGB(25, 28, 35) or Color3.fromRGB(230,233,240)
-    local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 8); corner.Parent = l
-    local stroke = Instance.new("UIStroke"); stroke.Thickness = 1; stroke.Color = C("Stroke"); stroke.Transparency = 0.35; stroke.Parent = l
-    l.Parent = topFrame
-    return l
+local function pill(text, bold)
+  local l = Instance.new("TextLabel")
+  l.Size = UDim2.new(0,140,1,-4); l.BackgroundTransparency = 0.35
+  l.Text = text; l.TextColor3 = C("Text"); l.Font = bold and Enum.Font.GothamBold or Enum.Font.Gotham
+  l.TextSize = 14; l.TextXAlignment = Enum.TextXAlignment.Center
+  l.BackgroundColor3 = (theme=="dark") and Color3.fromRGB(25,28,35) or Color3.fromRGB(230,233,240)
+  Instance.new("UICorner", l).CornerRadius = UDim.new(0,8)
+  local s = Instance.new("UIStroke", l); s.Thickness=1; s.Color=C("Stroke"); s.Transparency=0.35
+  l.Parent = topFrame; return l
 end
 
-local fpsTop = topLabel("FPS: --", 14, true)     -- vai ter cor rainbow
-local pingTop = topLabel("Ping: -- ms", 14, false)
+local fpsTop  = pill("FPS: --", true)   -- rainbow
+local pingTop = pill("Ping: -- ms", false)
 
--- Reposiciona quando a tela muda
 topGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-    topFrame.Position = UDim2.new(0.5, 0, 0, topInsetY())
+  topFrame.Position = UDim2.new(0.5,0,0,safeTopOffset())
 end)
 
--- FPS & Ping update (FPS em rainbow)
 do
-    local frames, last = 0, os.clock()
-    RunService.RenderStepped:Connect(function(dt)
-        frames += 1
-        -- arco-íris contínuo
-        local hue = (tick() * 0.15) % 1
-        fpsTop.TextColor3 = Color3.fromHSV(hue, 1, 1) -- só o FPS fica rainbow
-
-        local now = os.clock()
-        if now - last >= 1 then
-            fpsTop.Text = ("FPS: %d"):format(frames)
-            frames = 0
-            last = now
-            local pingVal
-            pcall(function()
-                local pingItem = Stats and Stats.Network and Stats.Network.ServerStatsItem and Stats.Network.ServerStatsItem["Data Ping"]
-                if pingItem and pingItem.GetValue then pingVal = math.floor(pingItem:GetValue()) end
-            end)
-            pingTop.Text = pingVal and ("Ping: %d ms"):format(pingVal) or "Ping: -- ms"
-        end
-    end)
+  local frames, last = 0, os.clock()
+  RunService.RenderStepped:Connect(function()
+    frames += 1
+    local hue = (tick() * 0.15) % 1  -- arco-íris suave
+    fpsTop.TextColor3 = Color3.fromHSV(hue, 1, 1)
+    if os.clock() - last >= 1 then
+      fpsTop.Text = ("FPS: %d"):format(frames); frames = 0; last = os.clock()
+      local pingVal
+      pcall(function()
+        local item = Stats and Stats.Network and Stats.Network.ServerStatsItem and Stats.Network.ServerStatsItem["Data Ping"]
+        if item and item.GetValue then pingVal = math.floor(item:GetValue()) end
+      end)
+      pingTop.Text = pingVal and ("Ping: %d ms"):format(pingVal) or "Ping: -- ms"
+    end
+  end)
 end
 
--- ============ PAINEL PRINCIPAL ============
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "CmdUI"
-screenGui.ResetOnSpawn = false
-screenGui.DisplayOrder = 999
-screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-screenGui.Parent = playerGui
+-- ============ TOAST ============
+local function quickToast(text)
+  local gui = Instance.new("ScreenGui"); gui.Name="Toast"; gui.ResetOnSpawn=false; gui.IgnoreGuiInset=true; gui.Parent=playerGui
+  local box = Instance.new("Frame"); box.Size=UDim2.new(0,420,0,70); box.AnchorPoint=Vector2.new(0.5,0); box.Position=UDim2.new(0.5,0,0.1,0)
+  box.BackgroundColor3=C("ToastBG"); box.BorderSizePixel=0; box.Parent=gui
+  Instance.new("UICorner", box).CornerRadius = UDim.new(0,12)
+  local s = Instance.new("UIStroke", box); s.Thickness=1; s.Color=C("Stroke"); s.Transparency=0.3
+  local lbl = Instance.new("TextLabel"); lbl.BackgroundTransparency=1; lbl.Size=UDim2.new(1,-20,1,-20); lbl.Position=UDim2.new(0,10,0,10)
+  lbl.Text=text; lbl.TextColor3=C("Text"); lbl.Font=Enum.Font.GothamBold; lbl.TextSize=18; lbl.TextWrapped=true; lbl.Parent=box
+  task.delay(1.1, function() if gui then gui:Destroy() end end)
+end
 
--- painel ancorado no canto inferior direito
+-- ============ MAIN PANEL ============
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name="CmdUI"; screenGui.ResetOnSpawn=false; screenGui.DisplayOrder=999
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; screenGui.Parent = playerGui
+
+-- ancorado canto inferior direito (flutuante)
 local MARGIN_X, MARGIN_Y = 0.02, 0.04
 local frame = Instance.new("Frame")
-frame.Name = "Root"
-frame.AnchorPoint = Vector2.new(1, 1)
-frame.Position = UDim2.fromScale(1 - MARGIN_X, 1 - MARGIN_Y)
-frame.Size = UDim2.new(0, 360, 0, 440)
-frame.BackgroundColor3 = C("BG")
-frame.BorderSizePixel = 0
-frame.Active = true
-frame.Parent = screenGui
-
-local sizeConstraint = Instance.new("UISizeConstraint")
-sizeConstraint.MinSize = Vector2.new(320, 380)
-sizeConstraint.MaxSize = Vector2.new(520, 600)
-sizeConstraint.Parent = frame
-
-local frameCorner = Instance.new("UICorner"); frameCorner.CornerRadius = UDim.new(0, 14); frameCorner.Parent = frame
-local frameStroke = Instance.new("UIStroke"); frameStroke.Thickness = 1; frameStroke.Color = C("Stroke"); frameStroke.Transparency = 0.3; frameStroke.Parent = frame
+frame.AnchorPoint=Vector2.new(1,1); frame.Position=UDim2.fromScale(1-MARGIN_X, 1-MARGIN_Y)
+frame.Size=UDim2.new(0,380,0,460); frame.BackgroundColor3=C("BG"); frame.BorderSizePixel=0; frame.Active=true; frame.Parent=screenGui
+local sizeCon = Instance.new("UISizeConstraint", frame); sizeCon.MinSize=Vector2.new(340,420); sizeCon.MaxSize=Vector2.new(560,640)
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0,14)
+local frameStroke = Instance.new("UIStroke", frame); frameStroke.Thickness=1; frameStroke.Color=C("Stroke"); frameStroke.Transparency=0.3
 
 local function applySafeInsetToPanel()
-    local _, br = GuiService:GetGuiInset()
-    frame.Position = UDim2.new(1, -br.X - (MARGIN_X * screenGui.AbsoluteSize.X),
-                               1, -br.Y - (MARGIN_Y * screenGui.AbsoluteSize.Y))
+  local tl, br = GuiService:GetGuiInset()
+  frame.Position = UDim2.new(1, -br.X - (MARGIN_X * screenGui.AbsoluteSize.X),
+                             1, -br.Y - (MARGIN_Y * screenGui.AbsoluteSize.Y))
 end
 applySafeInsetToPanel()
 screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(applySafeInsetToPanel)
 
--- HEADER
-local header = Instance.new("Frame")
-header.Name = "Header"
-header.Size = UDim2.new(1, 0, 0, 48)
-header.BackgroundColor3 = C("BG")
-header.BorderSizePixel = 0
-header.Parent = frame
-local headerCorner = Instance.new("UICorner"); headerCorner.CornerRadius = UDim.new(0, 14); headerCorner.Parent = header
+-- HEADER (arrasta + minimizar que NÃO some)
+local header = Instance.new("Frame"); header.Size=UDim2.new(1,0,0,48); header.BackgroundColor3=C("BG")
+header.BorderSizePixel=0; header.Parent=frame
+Instance.new("UICorner", header).CornerRadius = UDim.new(0,14)
 
-local headerPad = Instance.new("UIPadding")
-headerPad.PaddingLeft = UDim.new(0, 12)
-headerPad.PaddingRight = UDim.new(0, 12)
-headerPad.Parent = header
+local headerPad = Instance.new("UIPadding", header)
+headerPad.PaddingLeft=UDim.new(0,12); headerPad.PaddingRight=UDim.new(0,12)
 
-local headerLayout = Instance.new("UIListLayout")
+local headerLayout = Instance.new("UIListLayout", header)
 headerLayout.FillDirection = Enum.FillDirection.Horizontal
 headerLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
 headerLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-headerLayout.Padding = UDim.new(0, 8)
-headerLayout.Parent = header
+headerLayout.Padding = UDim.new(0,8)
 
 local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -220, 1, 0)
-title.BackgroundTransparency = 1
-title.Text = "FleischPanel Lite"
-title.TextColor3 = C("Text")
-title.Font = Enum.Font.GothamBold
-title.TextSize = 18
-title.TextXAlignment = Enum.TextXAlignment.Left
+title.Size=UDim2.new(1,-220,1,0); title.BackgroundTransparency=1
+title.Text="FleischPanel Lite"; title.TextColor3=C("Text")
+title.Font=Enum.Font.GothamBold; title.TextSize=18; title.TextXAlignment=Enum.TextXAlignment.Left
 title.Parent = header
 
 local function makeHeaderBtn(text, bg, stroke, w)
-    local b = Instance.new("TextButton")
-    b.AutoButtonColor = true
-    b.Size = UDim2.new(0, w or 90, 0, 26)
-    b.BackgroundColor3 = bg
-    b.Text = text
-    b.TextColor3 = C("Text")
-    b.Font = Enum.Font.GothamBold
-    b.TextSize = 14
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = b
-    local s = Instance.new("UIStroke"); s.Thickness = 1; s.Color = stroke; s.Transparency = 0.3; s.Parent = b
-    return b
+  local b = Instance.new("TextButton")
+  b.AutoButtonColor = true; b.Size = UDim2.new(0, w or 90, 0, 26)
+  b.BackgroundColor3 = bg; b.Text = text; b.TextColor3 = C("Text")
+  b.Font = Enum.Font.GothamBold; b.TextSize = 14
+  Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
+  local s = Instance.new("UIStroke", b); s.Thickness=1; s.Color=stroke; s.Transparency=0.3
+  return b
 end
 
-local headerButtons = Instance.new("Frame")
-headerButtons.Size = UDim2.new(0, 200, 1, 0)
-headerButtons.BackgroundTransparency = 1
-headerButtons.Parent = header
+local headerButtons = Instance.new("Frame"); headerButtons.Size=UDim2.new(0,200,1,0); headerButtons.BackgroundTransparency=1; headerButtons.Parent=header
+local hbLayout = Instance.new("UIListLayout", headerButtons)
+hbLayout.FillDirection=Enum.FillDirection.Horizontal; hbLayout.HorizontalAlignment=Enum.HorizontalAlignment.Right
+hbLayout.VerticalAlignment=Enum.VerticalAlignment.Center; hbLayout.Padding=UDim.new(0,8)
 
-local hbLayout = Instance.new("UIListLayout")
-hbLayout.FillDirection = Enum.FillDirection.Horizontal
-hbLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-hbLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-hbLayout.Padding = UDim.new(0, 8)
-hbLayout.Parent = headerButtons
+local minimizeBtn = makeHeaderBtn("—", C("AccentBtn"), C("Stroke"), 28); minimizeBtn.Parent=headerButtons
+local kickBtn     = makeHeaderBtn("Kick (K)", C("AccentRed"), C("AccentRedD"), 100); kickBtn.Parent=headerButtons
 
-local minimizeBtn = makeHeaderBtn("—", C("AccentBtn"), C("Stroke"), 28); minimizeBtn.Parent = headerButtons
-local kickBtn     = makeHeaderBtn("Kick (K)", C("AccentRed"), C("AccentRedD"), 100); kickBtn.Parent = headerButtons
-
--- arrastar pelo header
+-- Drag pelo header
 do
-    local dragging, dragStart, startPos
-    header.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging, dragStart, startPos = true, input.Position, frame.Position
-        end
-    end)
-    header.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - dragStart
-            local abs = screenGui.AbsoluteSize
-            frame.Position = UDim2.fromScale((startPos.X.Offset + delta.X) / abs.X, (startPos.Y.Offset + delta.Y) / abs.Y)
-        end
-    end)
-end
-
--- minimizar via botão e via CTRL
-local isMinimized = false
-local function setMinimized(mini) isMinimized = mini; frame.Visible = not mini end
-minimizeBtn.MouseButton1Click:Connect(function() setMinimized(not isMinimized) end)
-UserInputService.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.KeyCode == Enum.KeyCode.LeftControl or input.KeyCode == Enum.KeyCode.RightControl then
-        setMinimized(not isMinimized)
+  local dragging, dragStart, startPos
+  header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+      dragging, dragStart, startPos = true, input.Position, frame.Position
     end
-end)
-
--- TOAST
-local function quickToast(text)
-    local gui = Instance.new("ScreenGui"); gui.Name = "Toast"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true; gui.Parent = playerGui
-    local box = Instance.new("Frame"); box.Size = UDim2.new(0, 420, 0, 70); box.AnchorPoint = Vector2.new(0.5, 0); box.Position = UDim2.new(0.5, 0, 0.1, 0); box.BackgroundColor3 = C("ToastBG"); box.BorderSizePixel = 0; box.Parent = gui
-    local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 12); corner.Parent = box
-    local stroke = Instance.new("UIStroke"); stroke.Thickness = 1; stroke.Color = C("Stroke"); stroke.Transparency = 0.3; stroke.Parent = box
-    local lbl = Instance.new("TextLabel"); lbl.BackgroundTransparency = 1; lbl.Size = UDim2.new(1, -20, 1, -20); lbl.Position = UDim2.new(0, 10, 0, 10); lbl.Text = text; lbl.TextColor3 = C("Text"); lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 18; lbl.TextWrapped = true; lbl.Parent = box
-    task.delay(1.1, function() if gui then gui:Destroy() end end)
+  end)
+  header.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging=false end
+  end)
+  UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then
+      local delta = input.Position - dragStart
+      local abs = screenGui.AbsoluteSize
+      frame.Position = UDim2.fromScale((startPos.X.Offset + delta.X)/abs.X, (startPos.Y.Offset + delta.Y)/abs.Y)
+    end
+  end)
 end
 
--- AUTO-KICK
-local function doSelfKick()
-    if not ENABLE_SELF_KICK then return end
-    quickToast("Saindo rapidamente... (K)")
-    task.wait(0.1)
-    pcall(function() LocalPlayer:Kick(SELF_KICK_MESSAGE) end)
+-- CONTEÚDO do painel (colapsável)
+local content = Instance.new("Frame")
+content.Name="Content"; content.BackgroundTransparency=1; content.Parent=frame
+
+local rootLayout = Instance.new("UIListLayout", content)
+rootLayout.FillDirection=Enum.FillDirection.Vertical
+rootLayout.HorizontalAlignment=Enum.HorizontalAlignment.Stretch
+rootLayout.VerticalAlignment=Enum.VerticalAlignment.Top
+rootLayout.Padding = UDim.new(0,8)
+
+local rootPad = Instance.new("UIPadding", frame)
+rootPad.PaddingTop=UDim.new(0,8); rootPad.PaddingBottom=UDim.new(0,8)
+rootPad.PaddingLeft=UDim.new(0,10); rootPad.PaddingRight=UDim.new(0,10)
+
+-- LINHA DE AÇÕES (lado a lado, dentro da UI)
+local actionsRow = Instance.new("Frame")
+actionsRow.Name="ActionsRow"; actionsRow.BackgroundTransparency=1; actionsRow.Parent=content
+
+local arLayout = Instance.new("UIListLayout", actionsRow)
+arLayout.FillDirection = Enum.FillDirection.Horizontal
+arLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+arLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+arLayout.Padding = UDim.new(0,8)
+
+local function makeWideBtn(text, onClick, color, strokeColor)
+  local b = Instance.new("TextButton")
+  b.Size = UDim2.new(0.25, -6, 0, 32) -- 4 botões ocupam a linha
+  b.BackgroundColor3 = color or C("AccentBtn")
+  b.TextColor3 = C("Text")
+  b.Font = Enum.Font.GothamBold; b.TextSize = 13; b.Text = text; b.AutoButtonColor = true
+  Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
+  local s = Instance.new("UIStroke", b); s.Thickness=1; s.Color=strokeColor or C("Stroke"); s.Transparency=0.4
+  b.MouseButton1Click:Connect(function() pcall(onClick) end)
+  b.Parent = actionsRow; return b
 end
-UserInputService.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.KeyCode == SELF_KICK_KEY then doSelfKick() end
+
+local function visualSimples()
+  pcall(function()
+    Lighting.GlobalShadows=false; Lighting.ShadowSoftness=0; Lighting.Brightness=1
+    Lighting.Ambient=Color3.fromRGB(127,127,127); Lighting.OutdoorAmbient=Lighting.Ambient
+    Lighting.FogEnd=1e6; Lighting.FogStart=0; Lighting.FogColor=Lighting.Ambient
+  end)
+  local Terrain = workspace:FindFirstChildOfClass("Terrain")
+  if Terrain then
+    Terrain.WaterReflectance=0; Terrain.WaterTransparency=1; Terrain.WaterWaveSize=0; Terrain.WaterWaveSpeed=0; Terrain.WaterColor=Color3.fromRGB(0,0,0)
+  end
+  quickToast("Visual simplificado aplicado.")
+end
+
+local rejoinBtn = makeWideBtn("Reentrar", function()
+  quickToast("Reentrando..."); TeleportService:Teleport(game.PlaceId, LocalPlayer)
 end)
-kickBtn.MouseButton1Click:Connect(doSelfKick)
 
--- ============ LAYOUT VERTICAL DO PAINEL ============
-local rootLayout = Instance.new("UIListLayout")
-rootLayout.FillDirection = Enum.FillDirection.Vertical
-rootLayout.HorizontalAlignment = Enum.HorizontalAlignment.Stretch
-rootLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-rootLayout.Padding = UDim.new(0, 8)
-rootLayout.Parent = frame
+local visualBtn = makeWideBtn("Visual Simples", visualSimples)
 
-local rootPad = Instance.new("UIPadding")
-rootPad.PaddingTop = UDim.new(0, 8)
-rootPad.PaddingBottom = UDim.new(0, 8)
-rootPad.PaddingLeft = UDim.new(0, 10)
-rootPad.PaddingRight = UDim.new(0, 10)
-rootPad.Parent = frame
+local camBtn = makeWideBtn("Reset Câmera", function()
+  local cam = workspace.CurrentCamera; cam.CameraType = Enum.CameraType.Custom; quickToast("Câmera resetada.")
+end)
 
--- SELETOR (mostra/seleciona nome)
+local themeBtn = makeWideBtn("Tema: Escuro", function()
+  theme = (theme=="dark") and "light" or "dark"
+  themeBtn.Text = "Tema: " .. ((theme=="dark") and "Escuro" or "Claro")
+  -- reaplica paleta
+  frame.BackgroundColor3=C("BG"); frameStroke.Color=C("Stroke")
+  header.BackgroundColor3=C("BG"); title.TextColor3=C("Text")
+  kickBtn.BackgroundColor3=C("AccentRed"); kickBtn.TextColor3=C("Text")
+  -- atualiza botões da row
+  for _,b in ipairs(actionsRow:GetChildren()) do
+    if b:IsA("TextButton") then
+      b.BackgroundColor3=C("AccentBtn"); local s=b:FindFirstChildOfClass("UIStroke"); if s then s.Color=C("Stroke") end
+      b.TextColor3=C("Text")
+    end
+  end
+  -- lista/selector abaixo atualizados mais adiante nas criações
+end)
+
+-- SELETOR (nome selecionado + copiar)
 local selector = Instance.new("Frame")
-selector.Name = "Selector"
-selector.Size = UDim2.new(1, 0, 0, 42)
-selector.BackgroundColor3 = C("BG")
-selector.BorderSizePixel = 0
-selector.Parent = frame
-local selectorCorner = Instance.new("UICorner"); selectorCorner.CornerRadius = UDim.new(0, 10); selectorCorner.Parent = selector
-local selectorStroke = Instance.new("UIStroke"); selectorStroke.Thickness = 1; selectorStroke.Color = C("Stroke"); selectorStroke.Transparency = 0.4; selectorStroke.Parent = selector
-local selectorPad = Instance.new("UIPadding"); selectorPad.PaddingTop = UDim.new(0, 6); selectorPad.PaddingBottom = UDim.new(0, 6); selectorPad.PaddingLeft = UDim.new(0, 10); selectorPad.PaddingRight = UDim.new(0, 10); selectorPad.Parent = selector
-
-local selectorLayout = Instance.new("UIListLayout")
-selectorLayout.FillDirection = Enum.FillDirection.Horizontal
-selectorLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-selectorLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-selectorLayout.Padding = UDim.new(0, 8)
-selectorLayout.Parent = selector
+selector.Name="Selector"; selector.Size=UDim2.new(1,0,0,42); selector.BackgroundColor3=C("BG"); selector.BorderSizePixel=0; selector.Parent=content
+Instance.new("UICorner", selector).CornerRadius = UDim.new(0,10)
+local selStroke = Instance.new("UIStroke", selector); selStroke.Thickness=1; selStroke.Color=C("Stroke"); selStroke.Transparency=0.4
+local selPad = Instance.new("UIPadding", selector); selPad.PaddingTop=UDim.new(0,6); selPad.PaddingBottom=UDim.new(0,6); selPad.PaddingLeft=UDim.new(0,10); selPad.PaddingRight=UDim.new(0,10)
+local selLayout = Instance.new("UIListLayout", selector); selLayout.FillDirection=Enum.FillDirection.Horizontal; selLayout.Padding=UDim.new(0,8)
+selLayout.HorizontalAlignment=Enum.HorizontalAlignment.Left; selLayout.VerticalAlignment=Enum.VerticalAlignment.Center
 
 local selectedNameBox = Instance.new("TextBox")
-selectedNameBox.BackgroundTransparency = 1
-selectedNameBox.Size = UDim2.new(1, -120, 1, 0)
-selectedNameBox.TextEditable = false
-selectedNameBox.ClearTextOnFocus = false
-selectedNameBox.Text = ""
-selectedNameBox.TextColor3 = C("Text")
-selectedNameBox.Font = Enum.Font.Gotham
-selectedNameBox.TextSize = 14
-selectedNameBox.TextXAlignment = Enum.TextXAlignment.Left
-selectedNameBox.Parent = selector
+selectedNameBox.BackgroundTransparency=1; selectedNameBox.Size=UDim2.new(1,-120,1,0)
+selectedNameBox.TextEditable=false; selectedNameBox.ClearTextOnFocus=false; selectedNameBox.Text=""
+selectedNameBox.TextColor3=C("Text"); selectedNameBox.Font=Enum.Font.Gotham; selectedNameBox.TextSize=14
+selectedNameBox.TextXAlignment=Enum.TextXAlignment.Left; selectedNameBox.Parent=selector
 
-local copyBtn = makeHeaderBtn("Copiar nome", C("AccentBtn"), C("Stroke"), 110)
-copyBtn.Parent = selector
+local copyBtn = makeHeaderBtn("Copiar nome", C("AccentBtn"), C("Stroke"), 110); copyBtn.Parent=selector
 copyBtn.MouseButton1Click:Connect(function()
-    if selectedNameBox.Text == "" then
-        quickToast("Selecione um jogador na lista.")
-        return
-    end
-    selectedNameBox:CaptureFocus()
-    selectedNameBox.CursorPosition = #selectedNameBox.Text + 1
-    selectedNameBox.SelectionStart = 1
-    selectedNameBox.SelectionLength = #selectedNameBox.Text
-    quickToast("Nome selecionado. Pressione Ctrl+C para copiar.")
+  if selectedNameBox.Text=="" then quickToast("Selecione um jogador na lista."); return end
+  selectedNameBox:CaptureFocus(); selectedNameBox.CursorPosition=#selectedNameBox.Text+1; selectedNameBox.SelectionStart=1; selectedNameBox.SelectionLength=#selectedNameBox.Text
+  quickToast("Nome selecionado. Pressione Ctrl+C para copiar.")
 end)
 
--- *** COLUNA VERTICAL DE BOTÕES (um abaixo do outro) ***
-local actionsCol = Instance.new("Frame")
-actionsCol.Name = "ActionsColumn"
-actionsCol.Size = UDim2.new(1, 0, 0, 140) -- altura para 4 botões
-actionsCol.BackgroundTransparency = 1
-actionsCol.Parent = frame
-
-local acLayout = Instance.new("UIListLayout")
-acLayout.FillDirection = Enum.FillDirection.Vertical
-acLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-acLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-acLayout.Padding = UDim.new(0, 8)
-acLayout.Parent = actionsCol
-
-local function makeSmallButton(text, onClick, color, strokeColor)
-    local b = Instance.new("TextButton")
-    b.Size = UDim2.new(1, -20, 0, 30) -- largura quase total
-    b.BackgroundColor3 = color or C("AccentBtn")
-    b.TextColor3 = C("Text")
-    b.Font = Enum.Font.GothamBold
-    b.TextSize = 13
-    b.Text = text
-    b.AutoButtonColor = true
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = b
-    local s = Instance.new("UIStroke"); s.Thickness = 1; s.Color = strokeColor or C("Stroke"); s.Transparency = 0.4; s.Parent = b
-    b.MouseButton1Click:Connect(function() pcall(onClick) end)
-    return b
-end
-
-local rejoinBtn = makeSmallButton("Reentrar", function()
-    quickToast("Reentrando...")
-    TeleportService:Teleport(game.PlaceId, LocalPlayer)
-end); rejoinBtn.Parent = actionsCol
-
-local visualBtn = makeSmallButton("Visual Simples", function()
-    pcall(function()
-        Lighting.GlobalShadows = false
-        Lighting.ShadowSoftness = 0
-        Lighting.Brightness = 1
-        Lighting.Ambient = Color3.fromRGB(127,127,127)
-        Lighting.OutdoorAmbient = Color3.fromRGB(127,127,127)
-        Lighting.FogEnd = 1e6
-        Lighting.FogStart = 0
-        Lighting.FogColor = Color3.fromRGB(127,127,127)
-    end)
-    local Terrain = workspace:FindFirstChildOfClass("Terrain")
-    if Terrain then
-        Terrain.WaterReflectance = 0
-        Terrain.WaterTransparency = 1
-        Terrain.WaterWaveSize = 0
-        Terrain.WaterWaveSpeed = 0
-        Terrain.WaterColor = Color3.fromRGB(0,0,0)
-    end
-    quickToast("Visual simplificado aplicado.")
-end); visualBtn.Parent = actionsCol
-
-local camBtn = makeSmallButton("Reset Câmera", function()
-    local cam = workspace.CurrentCamera
-    cam.CameraType = Enum.CameraType.Custom
-    quickToast("Câmera resetada.")
-end); camBtn.Parent = actionsCol
-
-local themeBtn = makeSmallButton("Tema: Escuro", function()
-    theme = (theme == "dark") and "light" or "dark"
-    themeBtn.Text = "Tema: " .. ((theme == "dark") and "Escuro" or "Claro")
-
-    -- reaplica paleta do painel
-    frame.BackgroundColor3 = C("BG"); frameStroke.Color = C("Stroke")
-    header.BackgroundColor3 = C("BG")
-    title.TextColor3 = C("Text")
-    kickBtn.BackgroundColor3 = C("AccentRed"); kickBtn.TextColor3 = C("Text")
-
-    selectedNameBox.TextColor3 = C("Text")
-    selector.BackgroundColor3 = C("BG"); selectorStroke.Color = C("Stroke")
-
-    -- actions
-    for _, b in ipairs(actionsCol:GetChildren()) do
-        if b:IsA("TextButton") then
-            b.BackgroundColor3 = C("AccentBtn")
-            local st = b:FindFirstChildOfClass("UIStroke"); if st then st.Color = C("Stroke") end
-            b.TextColor3 = C("Text")
-        end
-    end
-
-    -- lista
-    scrolling.BackgroundColor3 = C("BG")
-    scrolling.ScrollBarImageColor3 = C("ScrollBar")
-end); themeBtn.Parent = actionsCol
-
--- LISTA DE JOGADORES (ocupa o resto)
-local listHolder = Instance.new("Frame")
-listHolder.Name = "ListHolder"
-listHolder.BackgroundTransparency = 1
-listHolder.Parent = frame
-
+-- LISTA DE JOGADORES
+local listHolder = Instance.new("Frame"); listHolder.BackgroundTransparency=1; listHolder.Parent=content
 local scrolling = Instance.new("ScrollingFrame")
-scrolling.Name = "PlayerList"
-scrolling.Size = UDim2.new(1, 0, 1, 0)
-scrolling.CanvasSize = UDim2.new(0, 0, 0, 0)
-scrolling.AutomaticCanvasSize = Enum.AutomaticSize.Y
-scrolling.ScrollBarThickness = 8
-scrolling.ScrollBarImageColor3 = C("ScrollBar")
-scrolling.BackgroundColor3 = C("BG")
-scrolling.BorderSizePixel = 0
-scrolling.Parent = listHolder
-local scrollCorner = Instance.new("UICorner"); scrollCorner.CornerRadius = UDim.new(0, 10); scrollCorner.Parent = scrolling
-local listLayout = Instance.new("UIListLayout"); listLayout.Padding = UDim.new(0, 8); listLayout.SortOrder = Enum.SortOrder.LayoutOrder; listLayout.Parent = scrolling
-local padding = Instance.new("UIPadding"); padding.PaddingTop = UDim.new(0, 8); padding.PaddingBottom = UDim.new(0, 8); padding.PaddingLeft = UDim.new(0, 8); padding.PaddingRight = UDim.new(0, 8); padding.Parent = scrolling
+scrolling.Name="PlayerList"; scrolling.Size=UDim2.new(1,0,1,0); scrolling.CanvasSize=UDim2.new(0,0,0,0); scrolling.AutomaticCanvasSize=Enum.AutomaticSize.Y
+scrolling.ScrollBarThickness=8; scrolling.ScrollBarImageColor3=C("ScrollBar"); scrolling.BackgroundColor3=C("BG"); scrolling.BorderSizePixel=0; scrolling.Parent=listHolder
+Instance.new("UICorner", scrolling).CornerRadius = UDim.new(0,10)
+local ll = Instance.new("UIListLayout", scrolling); ll.Padding=UDim.new(0,8); ll.SortOrder=Enum.SortOrder.LayoutOrder
+local pad = Instance.new("UIPadding", scrolling); pad.PaddingTop=UDim.new(0,8); pad.PaddingBottom=UDim.new(0,8); pad.PaddingLeft=UDim.new(0,8); pad.PaddingRight=UDim.new(0,8)
 
 local function makePlayerBtn(p)
-    local btn = Instance.new("TextButton")
-    btn.AutoButtonColor = false
-    btn.Size = UDim2.new(1, -16, 0, 40)
-    btn.BackgroundColor3 = C("BG")
-    btn.Text = ""
-    btn.BorderSizePixel = 0
-    btn.Parent = scrolling
-
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = btn
-    local s = Instance.new("UIStroke"); s.Thickness = 1; s.Color = C("Stroke"); s.Transparency = 0.4; s.Parent = btn
-
-    local nameLbl = Instance.new("TextLabel")
-    nameLbl.BackgroundTransparency = 1
-    nameLbl.Position = UDim2.new(0, 10, 0, 0)
-    nameLbl.Size = UDim2.new(1, -20, 1, 0)
-    nameLbl.Text = p.Name
-    nameLbl.TextColor3 = C("Text")
-    nameLbl.Font = Enum.Font.GothamBold
-    nameLbl.TextSize = 14
-    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-    nameLbl.Parent = btn
-
-    local hover = TweenService:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), { BackgroundColor3 = C("AccentBtn") })
-    local unhover = TweenService:Create(btn, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), { BackgroundColor3 = C("BG") })
-
-    btn.MouseEnter:Connect(function() hover:Play() end)
-    btn.MouseLeave:Connect(function() unhover:Play() end)
-
-    btn.MouseButton1Click:Connect(function()
-        selectedNameBox.Text = p.Name
-        local cam = workspace.CurrentCamera
-        if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            local hrp = p.Character.HumanoidRootPart
-            cam.CameraType = Enum.CameraType.Custom
-            cam:Interpolate(CFrame.new(hrp.Position + Vector3.new(0, 10, 12)), CFrame.new(hrp.Position), 0.25)
-            quickToast("Selecionado: " .. p.Name)
-        else
-            quickToast("Jogador sem personagem no momento.")
-        end
-    end)
+  local btn = Instance.new("TextButton"); btn.AutoButtonColor=false; btn.Size=UDim2.new(1,-16,0,40)
+  btn.BackgroundColor3=C("BG"); btn.Text=""; btn.BorderSizePixel=0; btn.Parent=scrolling
+  Instance.new("UICorner", btn).CornerRadius = UDim.new(0,10)
+  local s = Instance.new("UIStroke", btn); s.Thickness=1; s.Color=C("Stroke"); s.Transparency=0.4
+  local nameLbl = Instance.new("TextLabel"); nameLbl.BackgroundTransparency=1; nameLbl.Position=UDim2.new(0,10,0,0); nameLbl.Size=UDim2.new(1,-20,1,0)
+  nameLbl.Text=p.Name; nameLbl.TextColor3=C("Text"); nameLbl.Font=Enum.Font.GothamBold; nameLbl.TextSize=14; nameLbl.TextXAlignment=Enum.TextXAlignment.Left; nameLbl.Parent=btn
+  local hover = TweenService:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {BackgroundColor3=C("AccentBtn")})
+  local unhov = TweenService:Create(btn, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {BackgroundColor3=C("BG")})
+  btn.MouseEnter:Connect(function() hover:Play() end); btn.MouseLeave:Connect(function() unhov:Play() end)
+  btn.MouseButton1Click:Connect(function()
+    selectedNameBox.Text = p.Name
+    local cam = workspace.CurrentCamera
+    if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+      local hrp = p.Character.HumanoidRootPart
+      cam.CameraType = Enum.CameraType.Custom
+      cam:Interpolate(CFrame.new(hrp.Position + Vector3.new(0,10,12)), CFrame.new(hrp.Position), 0.25)
+      quickToast("Selecionado: "..p.Name)
+    else
+      quickToast("Jogador sem personagem no momento.")
+    end
+  end)
 end
 
 local function refreshList()
-    for _, child in ipairs(scrolling:GetChildren()) do
-        if child:IsA("TextButton") then child:Destroy() end
-    end
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer then makePlayerBtn(p) end
-    end
+  for _,c in ipairs(scrolling:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
+  for _,p in ipairs(Players:GetPlayers()) do if p~=LocalPlayer then makePlayerBtn(p) end end
 end
-Players.PlayerAdded:Connect(function(p) if p ~= LocalPlayer then makePlayerBtn(p) end end)
+Players.PlayerAdded:Connect(function(p) if p~=LocalPlayer then makePlayerBtn(p) end end)
 Players.PlayerRemoving:Connect(function() task.defer(refreshList) end)
 task.spawn(function() while frame.Parent do refreshList(); task.wait(2) end end)
 refreshList()
 
--- recalcula altura da lista conforme o painel
-local function recalcListHeight()
-    local h = frame.AbsoluteSize.Y
-    local headerH = header.AbsoluteSize.Y
-    local selectorH = selector.AbsoluteSize.Y
-    local actionsH = actionsCol.AbsoluteSize.Y
-    local pads = 8*3 + rootPad.PaddingTop.Offset + rootPad.PaddingBottom.Offset
-    local newH = h - (headerH + selectorH + actionsH + pads)
-    if newH < 120 then newH = 120 end
-    listHolder.Size = UDim2.new(1, 0, 0, newH)
+-- Alturas dinâmicas (lista ocupa o restante)
+local function recalcHeights()
+  local total = frame.AbsoluteSize.Y
+  local used = header.AbsoluteSize.Y + 8 -- header + padding
+  used += actionsRow.AbsoluteSize.Y + 8
+  used += selector.AbsoluteSize.Y + 8
+  local pads = 8 + 8 + 8 + 8 -- gaps aproximados + padding root (já contamos alguns)
+  local h = total - used -  (rootPad.PaddingTop.Offset + rootPad.PaddingBottom.Offset) - 8
+  if h < 120 then h = 120 end
+  listHolder.Size = UDim2.new(1,0,0,h)
 end
-frame:GetPropertyChangedSignal("AbsoluteSize"):Connect(recalcListHeight)
-task.defer(recalcListHeight)
+frame:GetPropertyChangedSignal("AbsoluteSize"):Connect(recalcHeights)
+task.defer(recalcHeights)
+
+-- Minimizar sem sumir (colapsa conteúdo, header fica visível)
+local collapsed = false
+local function setCollapsed(state)
+  collapsed = state
+  content.Visible = not state
+  minimizeBtn.Text = state and "□" or "—"
+end
+minimizeBtn.MouseButton1Click:Connect(function() setCollapsed(not collapsed) end)
+UserInputService.InputBegan:Connect(function(input,gp)
+  if gp then return end
+  if input.KeyCode==Enum.KeyCode.LeftControl or input.KeyCode==Enum.KeyCode.RightControl then
+    setCollapsed(not collapsed)
+  end
+end)
+
+-- AUTO-KICK
+local function doSelfKick()
+  if not ENABLE_SELF_KICK then return end
+  quickToast("Saindo rapidamente... (K)")
+  task.wait(0.1)
+  pcall(function() LocalPlayer:Kick(SELF_KICK_MESSAGE) end)
+end
+UserInputService.InputBegan:Connect(function(input,gp) if gp then return end if input.KeyCode==SELF_KICK_KEY then doSelfKick() end end)
+kickBtn.MouseButton1Click:Connect(doSelfKick)
 
 -- LOG
 print(("="):rep(52))
-print("✓ FLEISCHPANEL LITE ATIVADO (coluna vertical + Top HUD)")
+print("✓ FLEISCHPANEL LITE ATIVADO")
 print("🌈 FPS rainbow no topo | Ping no topo")
-print("🔁 Reentrar | 🌙 Visual Simples | 🎥 Reset Câmera | 🎨 Tema")
+print("🧭 Painel flutuante; botões na mesma linha dentro da UI; minimizar colapsa conteúdo")
 print(("="):rep(52))
