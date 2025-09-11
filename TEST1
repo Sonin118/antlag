@@ -1,233 +1,136 @@
--- CLEAN + NO-WALLS + ESP (ATUALIZADO)
--- Integra versão melhorada do softenWalls para reduzir lag: remove SurfaceAppearance/Decals/Textures,
--- desliga sombras, remove partículas/luzes e opcionalmente destroi as paredes identificadas.
--- Coloque este arquivo como LocalScript (por exemplo em StarterPlayerScripts) se o propósito
--- for apenas afetar o cliente. Para efeito de performance real no servidor, as alterações devem ser
--- aplicadas em ServerScriptService por quem administra o jogo.
-
--- ============ CONFIG =============
-local ENABLE_STRIP_SKINS   = true
-local ENABLE_NO_WALLS      = true
-local ENABLE_WALL_HACK     = true  -- Novo: torna paredes transparentes como wall hack
-local WALL_SCAN_INTERVAL   = 5.0   -- Aumentado para reduzir custo ainda mais
-
--- WALLS
-local WALL_KEYWORDS = {"wall","parede","barrier","invisible","barreira","colisão","block","border","gate","bar","kill","killbrick"}
-local ENABLE_REMOVE_WALLS = false    -- true = DESTRÓI as partes identificadas (melhor performance, altera mapa)
-local WALL_TAG             = "NoWallProcessed"
-
--- Configurações para wall hack
-local WALL_TRANSPARENCY    = 0.5  -- Transparência das paredes (0 = invisível, 1 = opaco)
+-- FleischPanel Lite (com Auto-Kick + Extras)
+-- Seguro: sem wallhack/ESP, sem destruição de objetos, sem remotes contra outros players.
+-- Recursos:
+--  - Tecla K: auto-kick com mensagem
+--  - Botão "Kick (K)" no header
+--  - Lista de jogadores + foco de câmera (client-side)
+--  - Reentrar (mesmo place)
+--  - Visual Simples (Lighting/Terrain locais)
+--  - Reset Câmera
+--  - FPS / Ping (Stats) no header
+--  - Tema Claro/Escuro (toggle)
+--  - Copiar nome do jogador (TextBox selecionável + instrução para Ctrl+C)
 
 -- ============ SERVICES ============
-local Players        = game:GetService("Players")
-local RunService     = game:GetService("RunService")
-local CollectionService = game:GetService("CollectionService")
-local Lighting       = game:GetService("Lighting")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService   = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local LocalPlayer    = Players.LocalPlayer
+local Players            = game:GetService("Players")
+local RunService         = game:GetService("RunService")
+local UserInputService   = game:GetService("UserInputService")
+local TeleportService    = game:GetService("TeleportService")
+local Lighting           = game:GetService("Lighting")
+local TweenService       = game:GetService("TweenService")
+local Stats              = game:GetService("Stats")
 
--- ============ CONFIG ESP ============
-local ENABLE_PLAYER_OUTLINE_ESP = true
-local PLAYER_OUTLINE_COLOR = Color3.fromRGB(255, 0, 0) -- Vermelho brilhante
-local PLAYER_FILL_COLOR = Color3.fromRGB(255, 0, 0) -- Vermelho brilhante
+local LocalPlayer        = Players.LocalPlayer
+local playerGui          = LocalPlayer:WaitForChild("PlayerGui")
 
-local playerHighlights = {}
-local playerNames = {}
-
--- ============ PAINEL ADMIN ============
-local remote = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Net"):WaitForChild("RE/AdminPanelService/ExecuteCommand")
-
-local comandos = {
-    "ragdoll","balloon","jail","morph","jumpscare","inverse","tiny","rocket",
+-- ============ THEME ============
+local theme = "dark"
+local palette = {
+    dark = {
+        BG = Color3.fromRGB(14, 17, 22),
+        Stroke = Color3.fromRGB(70, 70, 100),
+        Text = Color3.fromRGB(255, 255, 255),
+        AccentBtn = Color3.fromRGB(24, 28, 36),
+        AccentRed = Color3.fromRGB(170, 35, 45),
+        AccentRedD = Color3.fromRGB(90, 20, 25),
+        ScrollBar = Color3.fromRGB(100, 100, 120),
+        ToastBG = Color3.fromRGB(20, 24, 31),
+    },
+    light = {
+        BG = Color3.fromRGB(240, 242, 247),
+        Stroke = Color3.fromRGB(170, 170, 190),
+        Text = Color3.fromRGB(20, 20, 25),
+        AccentBtn = Color3.fromRGB(225, 229, 238),
+        AccentRed = Color3.fromRGB(210, 60, 70),
+        AccentRedD = Color3.fromRGB(160, 40, 50),
+        ScrollBar = Color3.fromRGB(140, 140, 170),
+        ToastBG = Color3.fromRGB(235, 238, 245),
+    }
 }
+local function C(k) return palette[theme][k] end
 
-local function executarComandos(playerName)
-    if not playerName or playerName == "" then return end
-    task.spawn(function()
-        for i,cmd in ipairs(comandos) do
-            local nomeConsulta = playerName
-            if type(nomeConsulta) == "string" and string.sub(nomeConsulta, 1, 1) == "@" then
-                nomeConsulta = string.sub(nomeConsulta, 2)
-            end
-            local alvo = Players:FindFirstChild(nomeConsulta)
-            if alvo then
-                if cmd == "rocket" then
-                    task.wait(3) -- espera 3s só antes do rocket
-                end
-                remote:FireServer(alvo, cmd)
-            end
-            task.wait(0.25) -- Reduzido o delay entre comandos
-        end
-    end)
-end
+-- ============ SELF-KICK ============
+local ENABLE_SELF_KICK   = true
+local SELF_KICK_KEY      = Enum.KeyCode.K
+local SELF_KICK_MESSAGE  = "Você foi removido pelo sistema de moderação.\n(Code: 268)"
 
--- ESP melhorado com nome do player
-local function createPlayerESP(character, playerName)
-    if not character then return end
-    
-    -- Highlight vermelho
-    local hl = Instance.new("Highlight")
-    hl.Name = "PlayerESP_Highlight"
-    hl.FillColor = PLAYER_FILL_COLOR
-    hl.OutlineColor = Color3.fromRGB(255, 255, 0) -- Amarelo brilhante
-    hl.FillTransparency = 0.3
-    hl.OutlineTransparency = 0.0
-    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    hl.Parent = character
-    
-    -- Nome do player acima da cabeça
-    local head = character:FindFirstChild("Head")
-    if head then
-        local nameGui = Instance.new("BillboardGui")
-        nameGui.Name = "PlayerESP_Name"
-        nameGui.AlwaysOnTop = true
-        nameGui.Size = UDim2.new(0, 200, 0, 50)
-        nameGui.StudsOffset = Vector3.new(0, 3, 0)
-        nameGui.Parent = head
-
-        local label = Instance.new("TextLabel")
-        label.Name = "Text"
-        label.BackgroundTransparency = 1
-        label.Size = UDim2.new(1, 0, 1, 0)
-        label.Font = Enum.Font.SourceSansBold
-        label.TextScaled = true
-        label.TextColor3 = Color3.fromRGB(255, 255, 255) -- Branco
-        label.TextStrokeTransparency = 0.0 -- Contorno preto
-        label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-        label.Text = playerName -- Nome real do player
-        label.Parent = nameGui
-    end
-    
-    -- Círculo vermelho no chão
-    local hrp = character:FindFirstChild("HumanoidRootPart")
-    if hrp then
-        local ring = Instance.new("CylinderHandleAdornment")
-        ring.Name = "PlayerESP_Ring"
-        ring.Radius = 4.0
-        ring.Height = 0.2
-        ring.Color3 = Color3.fromRGB(255, 0, 0)
-        ring.Transparency = 0.2
-        ring.Adornee = hrp
-        ring.AlwaysOnTop = true
-        ring.ZIndex = 10
-        ring.Parent = hrp
-    end
-    
-    return hl
-end
-
-local function setupPlayerESP(player)
-    if not ENABLE_PLAYER_OUTLINE_ESP then return end
-    if player == LocalPlayer then return end
-
-    local function onCharacterAdded(character)
-        task.wait(0.1)
-        if playerHighlights[player] then
-            playerHighlights[player]:Destroy()
-            playerHighlights[player] = nil
-        end
-        local hl = createPlayerESP(character, player.Name)
-        playerHighlights[player] = hl
-    end
-
-    if player.Character then
-        onCharacterAdded(player.Character)
-    end
-    player.CharacterAdded:Connect(onCharacterAdded)
-    player.CharacterRemoving:Connect(function()
-        if playerHighlights[player] then
-            playerHighlights[player]:Destroy()
-            playerHighlights[player] = nil
-        end
-    end)
-end
-
-for _, p in ipairs(Players:GetPlayers()) do
-    setupPlayerESP(p)
-end
-Players.PlayerAdded:Connect(setupPlayerESP)
-
--- ============ INTERFACE DO PAINEL ADMIN ============
-local playerGui = LocalPlayer:WaitForChild("PlayerGui")
-
+-- ============ CLEANUP UI ============
 if playerGui:FindFirstChild("CmdUI") then
     playerGui.CmdUI:Destroy()
 end
 
--- ScreenGui sem propriedades que possam causar blur
+-- ============ ROOT UI ============
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "CmdUI"
 screenGui.ResetOnSpawn = false
-screenGui.DisplayOrder = 999 -- Garante que o painel apareça por cima
+screenGui.DisplayOrder = 999
 screenGui.Parent = playerGui
 
--- Frame principal simples sem gradientes ou efeitos
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 200, 0, 250) -- Diminuindo a altura da interface
-frame.Position = UDim2.new(1, -220, 0.5, 100) -- Canto inferior direito, abaixo do botão '3'
-frame.BackgroundColor3 = Color3.fromRGB(14, 17, 22) -- #0E1116
+frame.Size = UDim2.new(0, 300, 0, 360)
+frame.Position = UDim2.new(1, -320, 0.5, -180)
+frame.BackgroundColor3 = C("BG")
 frame.BorderSizePixel = 0
 frame.Active = true
 frame.Draggable = true
 frame.Parent = screenGui
+local frameCorner = Instance.new("UICorner"); frameCorner.CornerRadius = UDim.new(0, 14); frameCorner.Parent = frame
+local frameStroke = Instance.new("UIStroke"); frameStroke.Thickness = 1; frameStroke.Color = C("Stroke"); frameStroke.Transparency = 0.3; frameStroke.Parent = frame
 
--- Cantos arredondados
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 15)
-corner.Parent = frame
-
--- Borda sutil ao redor do frame
-local frameStroke = Instance.new("UIStroke")
-frameStroke.Thickness = 1
-frameStroke.Color = Color3.fromRGB(70, 70, 100)
-frameStroke.Transparency = 0.3
-frameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-frameStroke.Parent = frame
-
--- Header simples
+-- Header
 local header = Instance.new("Frame")
-header.Size = UDim2.new(1, 0, 0, 40) -- Ajustando altura do header
-header.Position = UDim2.new(0, 0, 0, 0)
-header.BackgroundColor3 = Color3.fromRGB(14, 17, 22) -- #0E1116
+header.Size = UDim2.new(1, 0, 0, 44)
+header.BackgroundColor3 = C("BG")
 header.BorderSizePixel = 0
 header.Parent = frame
+local headerCorner = Instance.new("UICorner"); headerCorner.CornerRadius = UDim.new(0, 14); headerCorner.Parent = header
 
-local headerCorner = Instance.new("UICorner")
-headerCorner.CornerRadius = UDim.new(0, 15)
-headerCorner.Parent = header
-
--- Título
 local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -20, 1, 0)
+title.Size = UDim2.new(1, -120, 1, 0)
 title.Position = UDim2.new(0, 10, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "FleischPanel"
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Text = "FleischPanel Lite"
+title.TextColor3 = C("Text")
 title.Font = Enum.Font.GothamBold
 title.TextSize = 18
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Parent = header
 
--- Variável para controlar se a UI está minimizada
+-- FPS / Ping labels
+local infoHolder = Instance.new("Frame")
+infoHolder.Size = UDim2.new(0, 120, 1, 0)
+infoHolder.Position = UDim2.new(1, -120, 0, 0)
+infoHolder.BackgroundTransparency = 1
+infoHolder.Parent = header
+
+local fpsLabel = Instance.new("TextLabel")
+fpsLabel.Size = UDim2.new(1, 0, 0.5, 0)
+fpsLabel.Position = UDim2.new(0, 0, 0, 0)
+fpsLabel.BackgroundTransparency = 1
+fpsLabel.Text = "FPS: --"
+fpsLabel.TextColor3 = C("Text")
+fpsLabel.Font = Enum.Font.GothamBold
+fpsLabel.TextSize = 13
+fpsLabel.TextXAlignment = Enum.TextXAlignment.Right
+fpsLabel.Parent = infoHolder
+
+local pingLabel = Instance.new("TextLabel")
+pingLabel.Size = UDim2.new(1, 0, 0.5, 0)
+pingLabel.Position = UDim2.new(0, 0, 0.5, 0)
+pingLabel.BackgroundTransparency = 1
+pingLabel.Text = "Ping: -- ms"
+pingLabel.TextColor3 = C("Text")
+pingLabel.Font = Enum.Font.Gotham
+pingLabel.TextSize = 13
+pingLabel.TextXAlignment = Enum.TextXAlignment.Right
+pingLabel.Parent = infoHolder
+
+-- Minimizar com CTRL
 local isMinimized = false
-
--- Função para minimizar/maximizar
 local function toggleMinimize()
-    if isMinimized then
-        -- Maximizar
-        frame.Visible = true
-        isMinimized = false
-    else
-        -- Minimizar
-        frame.Visible = false
-        isMinimized = true
-    end
+    frame.Visible = not frame.Visible
+    isMinimized = not isMinimized
 end
-
--- Detectar tecla CTRL
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.LeftControl or input.KeyCode == Enum.KeyCode.RightControl then
@@ -235,104 +138,190 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- ScrollingFrame simples
+-- ============ TOAST ============
+local function quickToast(text)
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "KickToast"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.Parent = playerGui
+
+    local box = Instance.new("Frame")
+    box.Size = UDim2.new(0, 420, 0, 70)
+    box.Position = UDim2.new(0.5, -210, 0.4, 0)
+    box.BackgroundColor3 = C("ToastBG")
+    box.BorderSizePixel = 0
+    box.Parent = gui
+
+    local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 12); corner.Parent = box
+    local stroke = Instance.new("UIStroke"); stroke.Thickness = 1; stroke.Color = C("Stroke"); stroke.Transparency = 0.3; stroke.Parent = box
+
+    local lbl = Instance.new("TextLabel")
+    lbl.BackgroundTransparency = 1
+    lbl.Size = UDim2.new(1, -20, 1, -20)
+    lbl.Position = UDim2.new(0, 10, 0, 10)
+    lbl.Text = text
+    lbl.TextColor3 = C("Text")
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 18
+    lbl.TextWrapped = true
+    lbl.Parent = box
+
+    task.delay(1.1, function() if gui then gui:Destroy() end end)
+end
+
+-- ============ AUTO-KICK ============
+local function doSelfKick()
+    if not ENABLE_SELF_KICK then return end
+    quickToast("Saindo rapidamente... (K)")
+    task.wait(0.1)
+    pcall(function()
+        LocalPlayer:Kick(SELF_KICK_MESSAGE)
+    end)
+end
+-- Hotkey K
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == SELF_KICK_KEY then
+        doSelfKick()
+    end
+end)
+
+-- Botão Kick no header
+local kickBtn = Instance.new("TextButton")
+kickBtn.Size = UDim2.new(0, 90, 0, 26)
+kickBtn.Position = UDim2.new(1, -100, 0, 8)
+kickBtn.BackgroundColor3 = C("AccentRed")
+kickBtn.TextColor3 = C("Text")
+kickBtn.Font = Enum.Font.GothamBold
+kickBtn.TextSize = 14
+kickBtn.Text = "Kick (K)"
+kickBtn.AutoButtonColor = true
+kickBtn.Parent = header
+local kickCorner = Instance.new("UICorner"); kickCorner.CornerRadius = UDim.new(0, 8); kickCorner.Parent = kickBtn
+local kickStroke = Instance.new("UIStroke"); kickStroke.Thickness = 1; kickStroke.Color = C("AccentRedD"); kickStroke.Transparency = 0.3; kickStroke.Parent = kickBtn
+kickBtn.MouseButton1Click:Connect(doSelfKick)
+
+-- ============ BODY: SELETOR E LISTA ============
+-- Seletor + copiar nome
+local selectorFrame = Instance.new("Frame")
+selectorFrame.Size = UDim2.new(1, -20, 0, 40)
+selectorFrame.Position = UDim2.new(0, 10, 0, 52)
+selectorFrame.BackgroundColor3 = C("BG")
+selectorFrame.BorderSizePixel = 0
+selectorFrame.Parent = frame
+local selectorCorner = Instance.new("UICorner"); selectorCorner.CornerRadius = UDim.new(0, 10); selectorCorner.Parent = selectorFrame
+local selectorStroke = Instance.new("UIStroke"); selectorStroke.Thickness = 1; selectorStroke.Color = C("Stroke"); selectorStroke.Transparency = 0.4; selectorStroke.Parent = selectorFrame
+
+local selectedNameBox = Instance.new("TextBox")
+selectedNameBox.Size = UDim2.new(1, -120, 1, 0)
+selectedNameBox.Position = UDim2.new(0, 10, 0, 0)
+selectedNameBox.BackgroundTransparency = 1
+selectedNameBox.TextEditable = false
+selectedNameBox.Text = ""
+selectedNameBox.TextColor3 = C("Text")
+selectedNameBox.Font = Enum.Font.Gotham
+selectedNameBox.TextSize = 14
+selectedNameBox.TextXAlignment = Enum.TextXAlignment.Left
+selectedNameBox.ClearTextOnFocus = false
+selectedNameBox.Parent = selectorFrame
+
+local copyBtn = Instance.new("TextButton")
+copyBtn.Size = UDim2.new(0, 100, 0, 26)
+copyBtn.Position = UDim2.new(1, -110, 0, 7)
+copyBtn.BackgroundColor3 = C("AccentBtn")
+copyBtn.TextColor3 = C("Text")
+copyBtn.Font = Enum.Font.GothamBold
+copyBtn.TextSize = 13
+copyBtn.Text = "Copiar nome"
+copyBtn.AutoButtonColor = true
+copyBtn.Parent = selectorFrame
+local copyCorner = Instance.new("UICorner"); copyCorner.CornerRadius = UDim.new(0, 8); copyCorner.Parent = copyBtn
+local copyStroke = Instance.new("UIStroke"); copyStroke.Thickness = 1; copyStroke.Color = C("Stroke"); copyStroke.Transparency = 0.4; copyStroke.Parent = copyBtn
+
+copyBtn.MouseButton1Click:Connect(function()
+    if selectedNameBox.Text == "" then
+        quickToast("Selecione um jogador na lista.")
+        return
+    end
+    selectedNameBox:CaptureFocus()
+    selectedNameBox.CursorPosition = #selectedNameBox.Text + 1
+    selectedNameBox.SelectionStart = 1
+    selectedNameBox.SelectionLength = #selectedNameBox.Text
+    quickToast("Nome selecionado. Pressione Ctrl+C para copiar.")
+end)
+
+-- Lista de jogadores
 local scrolling = Instance.new("ScrollingFrame")
-scrolling.Size = UDim2.new(1, -20, 1, -60) -- Ajustando tamanho do scrolling frame para nova altura
-scrolling.Position = UDim2.new(0, 10, 0, 60) -- Ajustando posição do scrolling frame
-scrolling.BackgroundColor3 = Color3.fromRGB(14, 17, 22) -- #0E1116
+scrolling.Size = UDim2.new(1, -20, 1, -152)
+scrolling.Position = UDim2.new(0, 10, 0, 98)
+scrolling.BackgroundColor3 = C("BG")
 scrolling.BorderSizePixel = 0
 scrolling.ScrollBarThickness = 8
-scrolling.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 120)
+scrolling.ScrollBarImageColor3 = C("ScrollBar")
 scrolling.CanvasSize = UDim2.new(0, 0, 0, 0)
 scrolling.AutomaticCanvasSize = Enum.AutomaticSize.Y
 scrolling.Parent = frame
+local scrollCorner = Instance.new("UICorner"); scrollCorner.CornerRadius = UDim.new(0, 10); scrollCorner.Parent = scrolling
+local listLayout = Instance.new("UIListLayout"); listLayout.Parent = scrolling; listLayout.Padding = UDim.new(0, 8); listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+local padding = Instance.new("UIPadding"); padding.PaddingTop = UDim.new(0, 8); padding.PaddingBottom = UDim.new(0, 8); padding.PaddingLeft = UDim.new(0, 8); padding.PaddingRight = UDim.new(0, 8); padding.Parent = scrolling
 
-local scrollCorner = Instance.new("UICorner")
-scrollCorner.CornerRadius = UDim.new(0, 10)
-scrollCorner.Parent = scrolling
-
-local listLayout = Instance.new("UIListLayout")
-listLayout.Parent = scrolling
-listLayout.Padding = UDim.new(0, 8)
-listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
--- Padding interno
-local padding = Instance.new("UIPadding")
-padding.PaddingTop = UDim.new(0, 8)
-padding.PaddingBottom = UDim.new(0, 8)
-padding.PaddingLeft = UDim.new(0, 8)
-padding.PaddingRight = UDim.new(0, 8)
-padding.Parent = scrolling
-
-local function criarBotao(playerObj)
+local function criarBotaoJogador(playerObj)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, -16, 0, 40)
-    btn.BackgroundColor3 = Color3.fromRGB(14, 17, 22) -- #0E1116
+    btn.BackgroundColor3 = C("BG")
     btn.Text = ""
     btn.BorderSizePixel = 0
     btn.AutoButtonColor = false
     btn.Parent = scrolling
 
-    local cornerBtn = Instance.new("UICorner")
-    cornerBtn.CornerRadius = UDim.new(0, 10)
-    cornerBtn.Parent = btn
+    local cornerBtn = Instance.new("UICorner"); cornerBtn.CornerRadius = UDim.new(0, 10); cornerBtn.Parent = btn
+    local btnStroke = Instance.new("UIStroke"); btnStroke.Thickness = 1; btnStroke.Color = C("Stroke"); btnStroke.Transparency = 0.4; btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; btnStroke.Parent = btn
 
-    local btnStroke = Instance.new("UIStroke")
-    btnStroke.Thickness = 1
-    btnStroke.Color = Color3.fromRGB(70, 70, 100)
-    btnStroke.Transparency = 0.4
-    btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    btnStroke.Parent = btn
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Size = UDim2.new(1, -50, 1, 0)
+    nameLbl.Position = UDim2.new(0, 10, 0, 0)
+    nameLbl.BackgroundTransparency = 1
+    nameLbl.Text = playerObj.Name
+    nameLbl.TextColor3 = C("Text")
+    nameLbl.Font = Enum.Font.GothamBold
+    nameLbl.TextSize = 14
+    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    nameLbl.Parent = btn
 
-    -- Nome do jogador
-    local playerName = Instance.new("TextLabel")
-    playerName.Size = UDim2.new(1, -50, 1, 0)
-    playerName.Position = UDim2.new(0, 10, 0, 0)
-    playerName.BackgroundTransparency = 1
-    playerName.Text = playerObj.Name
-    playerName.TextColor3 = Color3.fromRGB(255, 255, 255)
-    playerName.Font = Enum.Font.GothamBold
-    playerName.TextSize = 14
-    playerName.TextXAlignment = Enum.TextXAlignment.Left
-    playerName.Parent = btn
+    local hoverTween = TweenService:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), { BackgroundColor3 = C("AccentBtn") })
+    local unhoverTween = TweenService:Create(btn, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), { BackgroundColor3 = C("BG") })
 
-    -- Hover suave
-    local hoverTween = TweenService:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), { BackgroundColor3 = Color3.fromRGB(24, 28, 36) })
-    local unhoverTween = TweenService:Create(btn, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), { BackgroundColor3 = Color3.fromRGB(14, 17, 22) })
-
-    btn.MouseEnter:Connect(function()
-        hoverTween:Play()
-    end)
-
-    btn.MouseLeave:Connect(function()
-        unhoverTween:Play()
-    end)
+    btn.MouseEnter:Connect(function() hoverTween:Play() end)
+    btn.MouseLeave:Connect(function() unhoverTween:Play() end)
 
     btn.MouseButton1Click:Connect(function()
-        executarComandos(playerObj.Name)
+        selectedNameBox.Text = playerObj.Name
+        local cam = workspace.CurrentCamera
+        if playerObj.Character and playerObj.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = playerObj.Character.HumanoidRootPart
+            cam.CameraType = Enum.CameraType.Custom
+            cam:Interpolate(CFrame.new(hrp.Position + Vector3.new(0, 10, 12)), CFrame.new(hrp.Position), 0.25)
+            quickToast("Selecionado: " .. playerObj.Name)
+        else
+            quickToast("Jogador sem personagem no momento.")
+        end
     end)
 end
 
 local function atualizarLista()
     for _, child in ipairs(scrolling:GetChildren()) do
-        if child:IsA("TextButton") then
-            child:Destroy()
-        end
+        if child:IsA("TextButton") then child:Destroy() end
     end
-
-    local jogadores = {}
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer then
-            table.insert(jogadores, p)
-        end
-    end
-    
-    for _, p in ipairs(jogadores) do
-        criarBotao(p)
+        if p ~= LocalPlayer then criarBotaoJogador(p) end
     end
 end
 
--- Atualizar lista de players
+Players.PlayerAdded:Connect(function(p)
+    if p ~= LocalPlayer then criarBotaoJogador(p) end
+end)
+Players.PlayerRemoving:Connect(function() task.defer(atualizarLista) end)
 task.spawn(function()
     while screenGui.Parent do
         atualizarLista()
@@ -341,355 +330,128 @@ task.spawn(function()
 end)
 atualizarLista()
 
--- ============ UTILS ============
-local function strContainsAny(s, list)
-    s = string.lower(s or "")
-    for _,w in ipairs(list) do
-        if string.find(s, string.lower(w)) then
-            return true
-        end
-    end
-    return false
+-- ============ FOOTER: CONTROLES ============
+local footer = Instance.new("Frame")
+footer.Size = UDim2.new(1, -20, 0, 44)
+footer.Position = UDim2.new(0, 10, 1, -54)
+footer.BackgroundColor3 = C("BG")
+footer.BorderSizePixel = 0
+footer.Parent = frame
+local footerCorner = Instance.new("UICorner"); footerCorner.CornerRadius = UDim.new(0, 10); footerCorner.Parent = footer
+local footerLayout = Instance.new("UIListLayout"); footerLayout.FillDirection = Enum.FillDirection.Horizontal; footerLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center; footerLayout.VerticalAlignment = Enum.VerticalAlignment.Center; footerLayout.Padding = UDim.new(0, 8); footerLayout.Parent = footer
+
+local function makeSmallButton(text, onClick, color, strokeColor)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, 120, 0, 30)
+    b.BackgroundColor3 = color or C("AccentBtn")
+    b.TextColor3 = C("Text")
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 13
+    b.Text = text
+    b.AutoButtonColor = true
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = b
+    local s = Instance.new("UIStroke"); s.Thickness = 1; s.Color = strokeColor or C("Stroke"); s.Transparency = 0.4; s.Parent = b
+    b.MouseButton1Click:Connect(function() pcall(onClick) end)
+    return b
 end
 
-local function safeGetHead(char)
-    return char and char:FindFirstChild("Head")
-end
-
--- Cache para jogadores já processados
-local processedPlayers = {}
-local processedParts = {}
-
--- ============ CÉU ESCURO ============
-local function setupDarkSky()
-    pcall(function()
-        -- Remove sky existente
-        local sky = Lighting:FindFirstChild("Sky")
-        if sky then sky:Destroy() end
-        
-        -- Cria novo sky escuro
-        local newSky = Instance.new("Sky")
-        newSky.Name = "DarkSky"
-        newSky.SkyboxBk = "rbxasset://textures/sky/sky512_bk.tex"
-        newSky.SkyboxDn = "rbxasset://textures/sky/sky512_dn.tex"
-        newSky.SkyboxFt = "rbxasset://textures/sky/sky512_ft.tex"
-        newSky.SkyboxLf = "rbxasset://textures/sky/sky512_lf.tex"
-        newSky.SkyboxRt = "rbxasset://textures/sky/sky512_rt.tex"
-        newSky.SkyboxUp = "rbxasset://textures/sky/sky512_up.tex"
-        
-        -- Configurações para céu escuro
-        newSky.SunAngularSize = 0
-        newSky.MoonAngularSize = 0
-        newSky.StarCount = 0
-        newSky.SunTextureId = ""
-        newSky.MoonTextureId = ""
-        
-        -- Cores escuras
-        newSky.SunColor = Color3.fromRGB(0, 0, 0)
-        newSky.MoonColor = Color3.fromRGB(0, 0, 0)
-        newSky.SunSize = 0
-        newSky.MoonSize = 0
-        
-        newSky.Parent = Lighting
-    end)
-end
-
--- ============ STRIP SKINS ============
-local function stripCharacter(character)
-    if not ENABLE_STRIP_SKINS or not character then return end
-    for _, item in pairs(character:GetChildren()) do
-        if item:IsA("Accessory") or item:IsA("Hat") then
-            pcall(function() item:Destroy() end)
-        end
-    end
-    for _, part in pairs(character:GetDescendants()) do
-        if part:IsA("Shirt") or part:IsA("Pants") or part:IsA("ShirtGraphic") then
-            pcall(function() part:Destroy() end)
-        end
-        if part:IsA("CharacterMesh") then pcall(function() part:Destroy() end) end
-        if part:IsA("Decal") or part:IsA("Texture") then pcall(function() part:Destroy() end) end
-        if part:IsA("SpecialMesh") then
-            pcall(function()
-                part.TextureId = ""
-                if part.MeshType == Enum.MeshType.FileMesh then part.MeshId = "" end
-            end)
-        end
-        if part:IsA("MeshPart") then
-            pcall(function()
-                part.TextureID = ""
-                part.Color = Color3.fromRGB(163,162,165)
-                part.Material = Enum.Material.Plastic
-            end)
-        end
-        if part:IsA("SurfaceAppearance") then pcall(function() part:Destroy() end) end
-        if part:IsA("BasePart") then
-            pcall(function()
-                part.Color = Color3.fromRGB(163,162,165)
-                part.Material = Enum.Material.Plastic
-                part.Transparency = 0
-                part.Reflectance = 0
-                part.BrickColor = BrickColor.new("Medium stone grey")
-            end)
-        end
-        if part:IsA("ParticleEmitter") or part:IsA("Fire") or part:IsA("Smoke") or
-           part:IsA("Sparkles") or part:IsA("Light") or part:IsA("PointLight") or
-           part:IsA("SpotLight") or part:IsA("SurfaceLight") or
-           part:IsA("Trail") or part:IsA("Beam") then
-            pcall(function() part:Destroy() end)
-        end
-    end
-    local head = character:FindFirstChild("Head")
-    if head then
-        for _, item in pairs(head:GetChildren()) do
-            if item:IsA("Decal") or string.find(string.lower(item.Name), "face") then
-                pcall(function() item:Destroy() end)
-            end
-        end
-        pcall(function()
-            head.Color = Color3.fromRGB(163,162,165)
-            head.Material = Enum.Material.Plastic
-        end)
-    end
-    local bodyColors = character:FindFirstChildOfClass("BodyColors")
-    if bodyColors then
-        pcall(function()
-            local stone = BrickColor.new("Medium stone grey")
-            bodyColors.HeadColor    = stone
-            bodyColors.TorsoColor   = stone
-            bodyColors.LeftArmColor = stone
-            bodyColors.RightArmColor= stone
-            bodyColors.LeftLegColor = stone
-            bodyColors.RightLegColor= stone
-        end)
-    end
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        local animator = humanoid:FindFirstChildOfClass("Animator")
-        if animator then
-            for _, track in pairs(animator:GetPlayingAnimationTracks()) do
-                pcall(function()
-                    if not tostring(track.Animation.AnimationId):find("rbxasset") then track:Stop() end
-                end)
-            end
-        end
-        pcall(function()
-            local description = humanoid:FindFirstChildOfClass("HumanoidDescription")
-            if description then description:Destroy() end
-        end)
-    end
-end
-
-local function processPlayer(player)
-    if player ~= LocalPlayer and not processedPlayers[player] then
-        processedPlayers[player] = true
-        if player.Character then stripCharacter(player.Character) end
-        player.CharacterAdded:Connect(function(character)
-            task.wait(0.5)
-            stripCharacter(character)
-        end)
-        player.CharacterAppearanceLoaded:Connect(function(character) stripCharacter(character) end)
-    end
-end
-
-for _, p in ipairs(Players:GetPlayers()) do processPlayer(p) end
-Players.PlayerAdded:Connect(processPlayer)
-
--- ============ NO-WALLS (MELHORADO) ============
-local lastWallScan = 0
-
--- Função para aplicar wall hack (tornar paredes transparentes)
-local function applyWallHack(inst)
-    if not ENABLE_WALL_HACK then return end
-    if processedParts[inst] then return end
-    processedParts[inst] = true
-    pcall(function()
-        inst.CanCollide = false
-        inst.CastShadow = false
-        inst.Transparency = WALL_TRANSPARENCY
-        -- Use SmoothPlastic for better transparent effect
-        inst.Material = Enum.Material.SmoothPlastic
-        inst.Reflectance = 0
-        if inst.LocalTransparencyModifier ~= nil then
-            inst.LocalTransparencyModifier = WALL_TRANSPARENCY
-        end
-        -- Preserve decals and textures for visual perception
-        -- Only remove SurfaceAppearance which can be heavy
-        for _, d in ipairs(inst:GetDescendants()) do
-            if d:IsA("SurfaceAppearance") then
-                pcall(function() d:Destroy() end)
-            elseif d:IsA("MeshPart") then
-                pcall(function()
-                    d.TextureID = ""
-                    d.MeshId = ""
-                    d.Transparency = WALL_TRANSPARENCY
-                    d.Material = Enum.Material.SmoothPlastic
-                end)
-            end
-        end
-        -- Marca como processado
-        pcall(function() CollectionService:AddTag(inst, WALL_TAG) end)
-    end)
-end
-
-local function processPartForPerformance(inst)
-    -- Aplica wall hack ou remoção otimizada
-    if ENABLE_WALL_HACK then
-        applyWallHack(inst)
-    elseif ENABLE_REMOVE_WALLS then
-        pcall(function() inst:Destroy() end)
-    else
-        pcall(function()
-            inst.CanCollide = false
-            inst.CastShadow = false
-            inst.Transparency = 1
-            inst.Material = Enum.Material.Plastic
-            inst.Reflectance = 0
-            if inst.LocalTransparencyModifier ~= nil then
-                inst.LocalTransparencyModifier = 1
-            end
-            -- Remove elementos visuais
-            for _, d in ipairs(inst:GetDescendants()) do
-                if d:IsA("SurfaceAppearance") or d:IsA("Decal") or d:IsA("Texture") then
-                    pcall(function() d:Destroy() end)
-                elseif d:IsA("MeshPart") then
-                    pcall(function()
-                        d.TextureID = ""
-                        d.MeshId = ""
-                        d.Transparency = 1
-                        d.CastShadow = false
-                    end)
-                end
-            end
-            -- Marca como processado
-            pcall(function() CollectionService:AddTag(inst, WALL_TAG) end)
-        end)
-    end
-end
-
-local function softenWalls()
-    if not ENABLE_NO_WALLS then return end
-    if tick() - lastWallScan < WALL_SCAN_INTERVAL then return end
-    lastWallScan = tick()
-
-    -- iterar workspace e processar partes não marcadas
-    for _, inst in ipairs(workspace:GetDescendants()) do
-        if inst:IsA("BasePart") and not CollectionService:HasTag(inst, WALL_TAG) then
-            local n = inst.Name or ""
-            if strContainsAny(n, WALL_KEYWORDS) then
-                processPartForPerformance(inst)
-            end
-        end
-    end
-end
-
--- ============ HEARTBEAT LOOP OTIMIZADO ============
-local frame = 0
-RunService.Heartbeat:Connect(function()
-    frame += 1
-    if frame >= 120 then -- ~2s (reduzido para economizar CPU ainda mais)
-        frame = 0
-        if ENABLE_STRIP_SKINS then
-            for _, p in ipairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer and p.Character then
-                    -- Verificação otimizada para itens novos
-                    for _, item in pairs(p.Character:GetChildren()) do
-                        if item:IsA("Accessory") or item:IsA("Hat") or
-                           item:IsA("Shirt") or item:IsA("Pants") or item:IsA("ShirtGraphic") then
-                            pcall(function() item:Destroy() end)
-                        end
-                    end
-                end
-            end
-        end
-        if ENABLE_NO_WALLS then softenWalls() end
-    end
+-- Reentrar
+local rejoinBtn = makeSmallButton("Reentrar", function()
+    quickToast("Reentrando...")
+    TeleportService:Teleport(game.PlaceId, LocalPlayer)
 end)
+rejoinBtn.Parent = footer
 
--- ============ FAST FLAGS DE PERFORMANCE ============
-local function applyFastFlags()
+-- Visual Simples
+local visualBtn = makeSmallButton("Visual Simples", function()
     pcall(function()
-        local UserSettings = game:GetService("UserSettings")
-        local UserGameSettings = UserSettings:GetService("UserGameSettings")
-        
-        -- Flags mais importantes para performance
-        UserGameSettings.GraphicsQualityLevel = 1 -- Mínimo
-        UserGameSettings.RenderingMode = Enum.RenderingMode.Direct3D11
-        
-        -- Desabilitar efeitos visuais
-        UserGameSettings.MasterVolume = 0.1
-        UserGameSettings.MusicVolume = 0.0
-        UserGameSettings.SFXVolume = 0.0
-        UserGameSettings.VoiceVolume = 0.0
-        
-        -- Configurações de rede
-        game:GetService("NetworkClient"):SetOutgoingKBPSLimit(math.huge)
-        game:GetService("NetworkClient"):SetIncomingKBPSLimit(math.huge)
-    end)
-    
-    -- Configurações de workspace
-    pcall(function()
-        workspace.StreamingEnabled = true
-        workspace.Physics.ThrottleAdjustTime = 0.1
-        workspace.Physics.ThrottleEvalTimeStep = 0.1
-        
-        -- Otimizar câmera
-        local camera = workspace.CurrentCamera
-        camera.FieldOfView = 70
-        camera.MaxZoomDistance = 400
-    end)
-    
-    -- Configurações de lighting
-    pcall(function()
-        local Lighting = game:GetService("Lighting")
         Lighting.GlobalShadows = false
         Lighting.ShadowSoftness = 0
-        Lighting.ShadowMapSize = 0
         Lighting.Brightness = 1
         Lighting.Ambient = Color3.fromRGB(127,127,127)
         Lighting.OutdoorAmbient = Color3.fromRGB(127,127,127)
-        Lighting.FogEnd = 1000000
+        Lighting.FogEnd = 1e6
         Lighting.FogStart = 0
         Lighting.FogColor = Color3.fromRGB(127,127,127)
     end)
-    
-    -- Configurações de terrain
-    pcall(function()
-        local Terrain = workspace:FindFirstChildOfClass("Terrain")
-        if Terrain then
-            Terrain.WaterReflectance = 0
-            Terrain.WaterTransparency = 1
-            Terrain.WaterWaveSize = 0
-            Terrain.WaterWaveSpeed = 0
-            Terrain.WaterColor = Color3.fromRGB(0,0,0)
+    local Terrain = workspace:FindFirstChildOfClass("Terrain")
+    if Terrain then
+        Terrain.WaterReflectance = 0
+        Terrain.WaterTransparency = 1
+        Terrain.WaterWaveSize = 0
+        Terrain.WaterWaveSpeed = 0
+        Terrain.WaterColor = Color3.fromRGB(0,0,0)
+    end
+    quickToast("Visual simplificado aplicado.")
+end)
+visualBtn.Parent = footer
+
+-- Reset Câmera
+local camBtn = makeSmallButton("Reset Câmera", function()
+    local cam = workspace.CurrentCamera
+    cam.CameraType = Enum.CameraType.Custom
+    quickToast("Câmera resetada.")
+end)
+camBtn.Parent = footer
+
+-- Tema Claro/Escuro
+local themeBtn = makeSmallButton("Tema: Escuro", function()
+    theme = (theme == "dark") and "light" or "dark"
+    themeBtn.Text = "Tema: " .. ((theme == "dark") and "Escuro" or "Claro")
+
+    -- Reaplicar cores
+    frame.BackgroundColor3 = C("BG"); frameStroke.Color = C("Stroke")
+    header.BackgroundColor3 = C("BG")
+    title.TextColor3 = C("Text")
+    fpsLabel.TextColor3 = C("Text"); pingLabel.TextColor3 = C("Text")
+    kickBtn.BackgroundColor3 = C("AccentRed"); kickStroke.Color = C("AccentRedD"); kickBtn.TextColor3 = C("Text")
+
+    selectorFrame.BackgroundColor3 = C("BG"); selectorStroke.Color = C("Stroke"); selectedNameBox.TextColor3 = C("Text")
+    copyBtn.BackgroundColor3 = C("AccentBtn"); copyStroke.Color = C("Stroke"); copyBtn.TextColor3 = C("Text")
+
+    scrolling.BackgroundColor3 = C("BG"); scrollCorner.Parent = scrolling
+    scrolling.ScrollBarImageColor3 = C("ScrollBar")
+
+    footer.BackgroundColor3 = C("BG")
+
+    quickToast("Tema aplicado: " .. ((theme == "dark") and "Escuro" or "Claro"))
+end)
+themeBtn.Parent = footer
+
+-- ============ FPS & PING ============
+do
+    local frames = 0
+    local last = os.clock()
+    RunService.RenderStepped:Connect(function()
+        frames += 1
+        local now = os.clock()
+        if now - last >= 1 then
+            fpsLabel.Text = ("FPS: %d"):format(frames)
+            frames = 0
+            last = now
+
+            -- Ping (ms) via Stats (pode variar conforme plataforma)
+            local pingVal
+            pcall(function()
+                local pingItem = Stats and Stats.Network and Stats.Network.ServerStatsItem and Stats.Network.ServerStatsItem["Data Ping"]
+                if pingItem and pingItem.GetValue then
+                    pingVal = math.floor(pingItem:GetValue())
+                end
+            end)
+            if pingVal then
+                pingLabel.Text = ("Ping: %d ms"):format(pingVal)
+            else
+                pingLabel.Text = "Ping: -- ms"
+            end
         end
     end)
 end
 
--- ============ INICIALIZAÇÃO ============
--- Configura céu escuro
-setupDarkSky()
-
--- Aplica fast flags de performance
-applyFastFlags()
-
+-- ============ LOG ============
 print(("="):rep(52))
-print("✓ SCRIPT ANTILAG ULTRA MELHORADO ATIVADO")
-print("🌙 CÉU ESCURO ATIVADO")
-print("🎯 ESP PLAYERS: highlight vermelho + nome + círculo no chão")
-print("🎛️ PAINEL ADMIN: FleischPanel (CTRL para minimizar)")
-print("⚡ FAST FLAGS DE PERFORMANCE APLICADAS")
-if ENABLE_STRIP_SKINS then print("→ Remoção otimizada de skins/roupas/acessórios") end
-if ENABLE_NO_WALLS then
-    print("→ Walls processadas. Intervalo de scan: "..tostring(WALL_SCAN_INTERVAL).."s")
-    if ENABLE_WALL_HACK then
-        print("→ WALL HACK ATIVO: paredes transparentes (efeito visual)")
-    elseif ENABLE_REMOVE_WALLS then
-        print("→ MODO REMOVER ATIVO: paredes serão DESTRUÍDAS")
-    else
-        print("→ Walls invisíveis (sem colisão)")
-    end
-end
-print("→ Loop otimizado para reduzir uso de CPU")
-print("→ Qualidade gráfica mínima + áudio reduzido")
-print("→ Comandos: ragdoll, balloon, jail, morph, jumpscare, inverse, tiny, rocket")
+print("✓ FLEISCHPANEL LITE ATIVADO (com extras)")
+print("🔑 AUTO-KICK: tecla K + botão Kick (K)")
+print("📋 COPIAR NOME: via TextBox selecionável (Ctrl+C)")
+print("📈 FPS + Ping no header | 🎨 Tema Claro/Escuro")
+print("🔁 Reentrar | 🌙 Visual Simples | 🎥 Reset Câmera")
 print(("="):rep(52))
