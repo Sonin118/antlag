@@ -1,315 +1,435 @@
--- FleischPanel — correções: remote não bloqueia + minimizar seguro + opcional Kick(K)
+-- ======================================================================
+-- ANTI-LAG V4 (SEGURO | SEM ESP DE PLAYER | SEM WALLHACK)
+-- + ESP de "brainhots" (somente itens) para debug em lugar próprio/autorizado
+-- Hadassa build — 2025-09-11
+-- ======================================================================
 
-local Players             = game:GetService("Players")
-local ReplicatedStorage   = game:GetService("ReplicatedStorage")
-local TweenService        = game:GetService("TweenService")
-local UserInputService    = game:GetService("UserInputService")
+-- ==================== CONFIG GERAL ====================
+local CONFIG = {
+    -- Anti-Lag
+    ENABLE_ENV_OPTIMIZE     = true,    -- Otimizar ambiente (partes, meshes, luzes/partículas/decais)
+    ENABLE_CHARACTER_TRIM   = false,   -- (Opcional) Simplificar skins de personagens (apenas cliente)
+    ENABLE_LIGHTING_TWEAKS  = true,    -- Ajustes leves e reversíveis no Lighting
+    ENABLE_SOUND_TWEAKS     = true,    -- Ajustes leves no SoundService
 
-local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+    SCAN_INTERVAL_SEC       = 3.0,     -- Intervalo base de varredura
+    MAX_ITEMS_PER_TICK      = 400,     -- Orçamento de itens por ciclo (mantém FPS)
+    DIST_LIMIT              = 500,     -- Só otimiza o que está a até X studs do jogador
+    AGGRESSIVE_MODE         = false,   -- TRUE: destrói SurfaceAppearance/Decals/Textures/Particles/Luzes
 
--- =============== (1) Buscar Remote sem travar ===============
-local function locateExecuteCommandRemote(timeout)
-    timeout = timeout or 2
-    -- estrutura comum em pastas: Packages/Net/RE/AdminPanelService/ExecuteCommand
-    local packages = ReplicatedStorage:FindFirstChild("Packages")
-    local net      = packages and packages:FindFirstChild("Net")
-    local re       = net and net:FindFirstChild("RE")
-    local svc      = re and re:FindFirstChild("AdminPanelService")
-    local remote   = svc and svc:FindFirstChild("ExecuteCommand")
+    -- Materiais/cores “leves”
+    TARGET_MATERIAL         = Enum.Material.SmoothPlastic,
+    TARGET_COLOR            = Color3.fromRGB(163,162,165),
 
-    if remote then return remote end
+    -- Exclusões por nome/classe (não tocar)
+    EXCLUDE_NAME_SUBSTR     = {"Door","Switch","Button","Lever","Spawn","Checkpoint","Portal","Teleporter","GUI","Billboard","Screen","Adornee"},
+    EXCLUDE_CLASSES         = { "Tool", "Accessory", "Humanoid", "Animator", "Motor6D" },
 
-    -- fallback: objeto com nome único (pouco comum, mas seu código original tentava isso)
-    local ok, r2 = pcall(function()
-        return net and net:WaitForChild("RE/AdminPanelService/ExecuteCommand", timeout)
-    end)
-    if ok and r2 then return r2 end
+    -- ====== ESP DE BRAINHOTS (DEBUG) ======
+    ENABLE_BRAINHOT_ESP     = true,    -- Liga/desliga ESP dos brainhots
+    BRAINHOT_SCAN_INTERVAL  = 3.0,     -- Segundos entre varreduras
+    BRAINHOT_MAX_DISTANCE   = 220,     -- Raio máximo para marcar
+    BRAINHOT_TAG            = "BrainhotESPTagged", -- Tag interna
+    BRAINHOT_LABEL_OFFSET_Y = 3.2,     -- Altura do rótulo
+}
 
-    -- último fallback: tentar esperar cada etapa com timeout curto (sem travar o script)
-    local function safeWait(parent, name)
-        if not parent then return nil end
-        local ok2, obj = pcall(function() return parent:WaitForChild(name, timeout) end)
-        return ok2 and obj or nil
-    end
+-- Lista alvo (case-insensitive). Edite à vontade:
+local BRAINHOT_NAMES = {
+    "La Sahur Combinasion",
+    "Graipuss Medussi",
+    "Pot Hotspot",
+    "Chicleteira Bicicleteira",
+    "La Grande Combinasion",
+    "Los Combinasionas",
+    "Nuclearo Dinossauro",
+    "La Karkerkar Combinasion",
+    "Los Hotspotsitos",
+    "Tralaledon",
+    "Esok Sekolah",
+    "Ketupat Kepat",
+    "Los Bros",
+    "La Supreme Combinasion",
+    "Ketchuru and Musturu",
+    "Garama and Madundung",
+    "Spaghetti Tualetti",
+    "Dragon Cannelloni",
+    "Secret",
+    "Lucky Block"
+}
 
-    packages = packages or ReplicatedStorage:FindFirstChild("Packages")
-    net      = net      or safeWait(packages, "Net")
-    re       = re       or (net and net:FindFirstChild("RE")) or safeWait(net, "RE")
-    svc      = svc      or (re and re:FindFirstChild("AdminPanelService")) or (re and safeWait(re, "AdminPanelService"))
-    remote   = remote   or (svc and svc:FindFirstChild("ExecuteCommand")) or (svc and safeWait(svc, "ExecuteCommand"))
+-- ==================== SERVICES ====================
+local Players            = game:GetService("Players")
+local RunService         = game:GetService("RunService")
+local CollectionService  = game:GetService("CollectionService")
+local Lighting           = game:GetService("Lighting")
+local SoundService       = game:GetService("SoundService")
+local LocalPlayer        = Players.LocalPlayer
 
-    return remote -- pode ser nil; UI continua viva mesmo assim
+-- ==================== ESTADO/CACHE ====================
+-- (fracas nas chaves => GC automático quando o objeto some)
+local processedParts     = setmetatable({}, {__mode="k"})
+local processedModels    = setmetatable({}, {__mode="k"})
+local processedSounds    = setmetatable({}, {__mode="k"})
+
+local lastScan           = 0
+local scanJitter         = 0
+
+-- Brainhots ESP
+local RED                = Color3.fromRGB(255, 0, 0)
+local brainhotSet        = {}
+local brainhotMarked     = setmetatable({}, {__mode = "k"})
+local lastBrainhotScan   = 0
+
+-- ==================== HELPERS ====================
+local function safeLower(s) return string.lower(tostring(s or "")) end
+
+local function norm(s)
+    s = tostring(s or ""):gsub("%s+", " "):gsub("^%s*(.-)%s*$", "%1")
+    return string.lower(s)
 end
 
-local remote = locateExecuteCommandRemote(2)
+for _, n in ipairs(BRAINHOT_NAMES) do
+    brainhotSet[norm(n)] = true
+end
 
--- =============== (2) Comandos (ativados só se o remote existir) ===============
-local comandos = { "ragdoll","balloon","jail","morph","jumpscare","inverse","tiny","rocket" }
+local function inBrainhotList(name)
+    return brainhotSet[norm(name or "")]
+end
 
-local function executarComandos(playerName)
-    if not remote then
-        warn("[FleischPanel] Remote não encontrado. Botões desativados.")
-        return
+local function shouldExcludeByName(name)
+    local n = safeLower(name)
+    for _, key in ipairs(CONFIG.EXCLUDE_NAME_SUBSTR) do
+        if string.find(n, safeLower(key), 1, true) then
+            return true
+        end
     end
-    if not playerName or playerName == "" then return end
+    return false
+end
 
-    task.spawn(function()
-        for _,cmd in ipairs(comandos) do
-            local nomeConsulta = tostring(playerName)
-            if nomeConsulta:sub(1,1) == "@" then nomeConsulta = nomeConsulta:sub(2) end
-            local alvo = Players:FindFirstChild(nomeConsulta)
-            if alvo then
-                if cmd == "rocket" then task.wait(3) end
-                remote:FireServer(alvo, cmd)
+local function classInList(obj, classList)
+    for _, c in ipairs(classList) do
+        if obj:IsA(c) then return true end
+    end
+    return false
+end
+
+local function getLocalRoot()
+    local c = LocalPlayer and LocalPlayer.Character
+    return c and c:FindFirstChild("HumanoidRootPart") or nil
+end
+
+local function withinDistance(inst, limit)
+    local root = getLocalRoot()
+    if not root then return true end  -- durante respawn, deixa passar
+    local part
+    if inst:IsA("BasePart") then
+        part = inst
+    elseif inst:IsA("Model") then
+        part = inst.PrimaryPart or inst:FindFirstChild("HumanoidRootPart") or inst:FindFirstChild("Head")
+        if not part then
+            for _,d in ipairs(inst:GetDescendants()) do
+                if d:IsA("BasePart") then part = d break end
             end
-            task.wait(0.25)
+        end
+    end
+    if not part then return false end
+    local ok, dist = pcall(function() return (part.Position - root.Position).Magnitude end)
+    return ok and dist <= (limit or CONFIG.DIST_LIMIT)
+end
+
+-- ==================== LIGHTING / SOUND TWEAKS ====================
+local originalLighting = {}
+local originalSound = {}
+
+local function applyLightingTweaks()
+    if not CONFIG.ENABLE_LIGHTING_TWEAKS then return end
+    if next(originalLighting) == nil then
+        originalLighting.GlobalShadows = Lighting.GlobalShadows
+        originalLighting.EnvironmentDiffuseScale = Lighting.EnvironmentDiffuseScale
+        originalLighting.EnvironmentSpecularScale = Lighting.EnvironmentSpecularScale
+        originalLighting.Brightness = Lighting.Brightness
+        originalLighting.Technology = Lighting.Technology
+    end
+    pcall(function()
+        Lighting.GlobalShadows = false
+        Lighting.EnvironmentDiffuseScale = 0
+        Lighting.EnvironmentSpecularScale = 0
+        Lighting.Brightness = math.clamp((Lighting.Brightness or 2) * 0.7, 1, 3)
+    end)
+end
+
+local function applySoundTweaks()
+    if not CONFIG.ENABLE_SOUND_TWEAKS then return end
+    if next(originalSound) == nil then
+        originalSound.DistanceFactor = SoundService.DistanceFactor
+        originalSound.DopplerScale  = SoundService.DopplerScale
+        originalSound.RolloffScale  = SoundService.RolloffScale
+    end
+    pcall(function()
+        SoundService.DistanceFactor = 1
+        SoundService.DopplerScale   = 0.5
+        SoundService.RolloffScale   = 1
+    end)
+end
+
+-- ==================== OTIMIZAÇÃO DE PERSONAGENS (OPCIONAL) ====================
+local function simplifyCharacter(char)
+    if not CONFIG.ENABLE_CHARACTER_TRIM or not char then return end
+    for _, d in ipairs(char:GetDescendants()) do
+        if d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Beam") then
+            if CONFIG.AGGRESSIVE_MODE then pcall(function() d:Destroy() end)
+            else pcall(function() d.Enabled = false end) end
+        elseif d:IsA("PointLight") or d:IsA("SpotLight") or d:IsA("SurfaceLight") then
+            if CONFIG.AGGRESSIVE_MODE then pcall(function() d:Destroy() end)
+            else pcall(function() d.Enabled = false end) end
+        elseif d:IsA("SurfaceAppearance") then
+            if CONFIG.AGGRESSIVE_MODE then pcall(function() d:Destroy() end) end
+        elseif d:IsA("Decal") or d:IsA("Texture") then
+            if CONFIG.AGGRESSIVE_MODE then pcall(function() d:Destroy() end)
+            else pcall(function() d.Transparency = 1 end) end
+        elseif d:IsA("MeshPart") then
+            pcall(function()
+                if CONFIG.AGGRESSIVE_MODE then d.TextureID = "" end
+                d.Material = CONFIG.TARGET_MATERIAL
+                d.CastShadow = false
+            end)
+        elseif d:IsA("BasePart") then
+            pcall(function()
+                d.Material = CONFIG.TARGET_MATERIAL
+                d.CastShadow = false
+                d.Reflectance = 0
+            end)
+        end
+    end
+end
+
+local function hookPlayers()
+    if not CONFIG.ENABLE_CHARACTER_TRIM then return end
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl ~= LocalPlayer and pl.Character then simplifyCharacter(pl.Character) end
+        pl.CharacterAdded:Connect(function(c) task.defer(simplifyCharacter, c) end)
+    end
+    Players.PlayerAdded:Connect(function(pl)
+        pl.CharacterAdded:Connect(function(c) task.defer(simplifyCharacter, c) end)
+    end)
+end
+
+-- ==================== OTIMIZAÇÃO DO AMBIENTE ====================
+local function isSafeTarget(inst)
+    if not inst or not inst.Parent then return false end
+    if classInList(inst, CONFIG.EXCLUDE_CLASSES) then return false end
+    if shouldExcludeByName(inst.Name) then return false end
+    if inst:IsA("BillboardGui") or inst:IsA("SurfaceGui") or inst:IsA("ScreenGui") then
+        return false
+    end
+    if inst:IsA("Tool") then return false end
+    return true
+end
+
+local function softenVisualOfPart(part)
+    if processedParts[part] then return end
+    processedParts[part] = true
+
+    -- 1) Reduções leves (reversíveis onde possível)
+    pcall(function()
+        part.CastShadow = false
+        part.Reflectance = 0
+        part.Material = CONFIG.TARGET_MATERIAL
+        -- Não mexe em Transparency para não sumir objetos essenciais
+    end)
+
+    -- 2) Descendentes pesados
+    for _, d in ipairs(part:GetDescendants()) do
+        if d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Beam") then
+            if CONFIG.AGGRESSIVE_MODE then pcall(function() d:Destroy() end)
+            else pcall(function() d.Enabled = false end) end
+        elseif d:IsA("SurfaceAppearance") then
+            if CONFIG.AGGRESSIVE_MODE then pcall(function() d:Destroy() end) end
+        elseif d:IsA("Decal") or d:IsA("Texture") then
+            if CONFIG.AGGRESSIVE_MODE then pcall(function() d:Destroy() end)
+            else pcall(function() d.Transparency = 1 end) end
+        elseif d:IsA("PointLight") or d:IsA("SpotLight") or d:IsA("SurfaceLight") then
+            if CONFIG.AGGRESSIVE_MODE then pcall(function() d:Destroy() end)
+            else pcall(function() d.Enabled = false end) end
+        end
+    end
+end
+
+local function softenModel(model)
+    if processedModels[model] then return end
+    processedModels[model] = true
+    for _, d in ipairs(model:GetDescendants()) do
+        if d:IsA("BasePart") and isSafeTarget(d) then
+            softenVisualOfPart(d)
+        end
+    end
+end
+
+local function scanEnvironment()
+    if not CONFIG.ENABLE_ENV_OPTIMIZE then return end
+    local budget = CONFIG.MAX_ITEMS_PER_TICK
+
+    for _, inst in ipairs(workspace:GetDescendants()) do
+        if budget <= 0 then break end
+        if not inst.Parent then continue end
+
+        if inst:IsA("BasePart") then
+            if not isSafeTarget(inst) then continue end
+            if withinDistance(inst, CONFIG.DIST_LIMIT) and not processedParts[inst] then
+                softenVisualOfPart(inst)
+                budget -= 1
+            end
+        elseif inst:IsA("Model") then
+            if not isSafeTarget(inst) then continue end
+            if withinDistance(inst, CONFIG.DIST_LIMIT) and not processedModels[inst] then
+                softenModel(inst)
+                budget -= 20
+            end
+        end
+    end
+end
+
+-- ==================== ESP DE BRAINHOTS (SOMENTE ITENS) ====================
+local function getPrimary(inst)
+    if inst:IsA("Model") then
+        if inst.PrimaryPart then return inst.PrimaryPart end
+        local head = inst:FindFirstChild("Head")
+        if head and head:IsA("BasePart") then return head end
+        for _,d in ipairs(inst:GetDescendants()) do
+            if d:IsA("BasePart") then return d end
+        end
+    elseif inst:IsA("BasePart") then
+        return inst
+    end
+    return nil
+end
+
+local function createBillboard(nameText)
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "BrainhotNameBB"
+    bb.Size = UDim2.new(0, 200, 0, 50)
+    bb.StudsOffset = Vector3.new(0, CONFIG.BRAINHOT_LABEL_OFFSET_Y, 0)
+    bb.AlwaysOnTop = true
+    bb.MaxDistance = CONFIG.BRAINHOT_MAX_DISTANCE
+
+    local tl = Instance.new("TextLabel")
+    tl.Name = "Label"
+    tl.BackgroundTransparency = 1
+    tl.Size = UDim2.new(1, 0, 1, 0)
+    tl.TextScaled = true
+    tl.Font = Enum.Font.GothamBold
+    tl.Text = nameText or "Brainhot"
+    tl.TextColor3 = Color3.new(1,1,1)
+    tl.TextStrokeTransparency = 0.5
+    tl.Parent = bb
+
+    return bb
+end
+
+local function createHighlight()
+    local hl = Instance.new("Highlight")
+    hl.Name = "BrainhotHL"
+    hl.FillTransparency = 1
+    hl.OutlineTransparency = 0
+    hl.OutlineColor = RED
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    return hl
+end
+
+local function attachBrainhotMarkers(targetInst)
+    if not targetInst or not targetInst.Parent then return end
+    if CollectionService:HasTag(targetInst, CONFIG.BRAINHOT_TAG) then return end
+
+    local primary = getPrimary(targetInst)
+    if not primary then return end
+
+    local hl = createHighlight()
+    hl.Parent = targetInst
+    hl.Adornee = targetInst
+
+    local bb = createBillboard(targetInst.Name)
+    bb.Parent = primary
+
+    CollectionService:AddTag(targetInst, CONFIG.BRAINHOT_TAG)
+    brainhotMarked[targetInst] = {hl = hl, bb = bb, primary = primary}
+
+    targetInst.AncestryChanged:Connect(function(_, parent)
+        if not parent then
+            pcall(function() if bb and bb.Parent then bb:Destroy() end end)
+            pcall(function() if hl and hl.Parent then hl:Destroy() end end)
+            pcall(function() CollectionService:RemoveTag(targetInst, CONFIG.BRAINHOT_TAG) end)
+            brainhotMarked[targetInst] = nil
         end
     end)
 end
 
--- =============== (3) Limpa UI anterior e cria a nova ===============
-if playerGui:FindFirstChild("CmdUI") then
-    playerGui.CmdUI:Destroy()
-end
+local function scanBrainhots()
+    if not CONFIG.ENABLE_BRAINHOT_ESP then return end
+    if (tick() - lastBrainhotScan) < CONFIG.BRAINHOT_SCAN_INTERVAL then return end
+    lastBrainhotScan = tick()
 
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "CmdUI"
-screenGui.ResetOnSpawn = false
-screenGui.DisplayOrder = 999
-screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-screenGui.Parent = playerGui
+    -- Varre por Models/Parts cujo nome esteja na lista alvo
+    for _, inst in ipairs(workspace:GetDescendants()) do
+        if (inst:IsA("Model") or inst:IsA("BasePart"))
+            and not inst:IsA("Accessory")
+            and not inst:IsA("Tool") then
 
--- Frame principal
-local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 220, 0, 280)
-frame.Position = UDim2.new(1, -240, 0.5, -140) -- canto direito
-frame.BackgroundColor3 = Color3.fromRGB(14, 17, 22)
-frame.BorderSizePixel = 0
-frame.Active = true
-frame.Parent = screenGui
-
--- Draggable (suave) pelo header
-do
-    local dragging, dragStart, startPos
-    frame.InputBegan:Connect(function(input)
-        -- vamos habilitar drag só quando começar no header (definido mais abaixo)
-    end)
-    -- definiremos os handlers no header depois de criar o header
-end
-
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 15)
-corner.Parent = frame
-
-local frameStroke = Instance.new("UIStroke")
-frameStroke.Thickness = 1
-frameStroke.Color = Color3.fromRGB(70, 70, 100)
-frameStroke.Transparency = 0.3
-frameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-frameStroke.Parent = frame
-
--- =============== Header (sempre visível) ===============
-local header = Instance.new("Frame")
-header.Size = UDim2.new(1, 0, 0, 40)
-header.Position = UDim2.new(0, 0, 0, 0)
-header.BackgroundColor3 = Color3.fromRGB(14, 17, 22)
-header.BorderSizePixel = 0
-header.Parent = frame
-
-local headerCorner = Instance.new("UICorner")
-headerCorner.CornerRadius = UDim.new(0, 15)
-headerCorner.Parent = header
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -80, 1, 0)
-title.Position = UDim2.new(0, 10, 0, 0)
-title.BackgroundTransparency = 1
-title.Text = "FleischPanel"
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.Font = Enum.Font.GothamBold
-title.TextSize = 18
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.Parent = header
-
--- Botão minimizar (colapsa conteúdo; header fica)
-local minimizeBtn = Instance.new("TextButton")
-minimizeBtn.Size = UDim2.new(0, 26, 0, 26)
-minimizeBtn.Position = UDim2.new(1, -36, 0.5, -13)
-minimizeBtn.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
-minimizeBtn.TextColor3 = Color3.new(1,1,1)
-minimizeBtn.Font = Enum.Font.GothamBold
-minimizeBtn.TextSize = 16
-minimizeBtn.Text = "—"
-minimizeBtn.AutoButtonColor = true
-minimizeBtn.Parent = header
-local minimizeCorner = Instance.new("UICorner"); minimizeCorner.CornerRadius = UDim.new(0,8); minimizeCorner.Parent = minimizeBtn
-local minimizeStroke = Instance.new("UIStroke"); minimizeStroke.Thickness = 1; minimizeStroke.Color = Color3.fromRGB(70,70,100); minimizeStroke.Transparency = 0.3; minimizeStroke.Parent = minimizeBtn
-
--- =============== Conteúdo (pode ser colapsado) ===============
-local content = Instance.new("Frame")
-content.Size = UDim2.new(1, 0, 1, -40)
-content.Position = UDim2.new(0, 0, 0, 40)
-content.BackgroundTransparency = 1
-content.Parent = frame
-
--- ScrollingFrame
-local scrolling = Instance.new("ScrollingFrame")
-scrolling.Size = UDim2.new(1, -20, 1, -20)
-scrolling.Position = UDim2.new(0, 10, 0, 10)
-scrolling.BackgroundColor3 = Color3.fromRGB(14, 17, 22)
-scrolling.BorderSizePixel = 0
-scrolling.ScrollBarThickness = 8
-scrolling.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 120)
-scrolling.CanvasSize = UDim2.new(0, 0, 0, 0)
-scrolling.AutomaticCanvasSize = Enum.AutomaticSize.Y
-scrolling.Parent = content
-
-local scrollCorner = Instance.new("UICorner")
-scrollCorner.CornerRadius = UDim.new(0, 10)
-scrollCorner.Parent = scrolling
-
-local listLayout = Instance.new("UIListLayout")
-listLayout.Parent = scrolling
-listLayout.Padding = UDim.new(0, 8)
-listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
-local padding = Instance.new("UIPadding")
-padding.PaddingTop = UDim.new(0, 8)
-padding.PaddingBottom = UDim.new(0, 8)
-padding.PaddingLeft = UDim.new(0, 8)
-padding.PaddingRight = UDim.new(0, 8)
-padding.Parent = scrolling
-
--- Mensagem de estado (ex.: remote ausente)
-local statusLabel = Instance.new("TextLabel")
-statusLabel.BackgroundTransparency = 1
-statusLabel.Size = UDim2.new(1, -20, 0, 20)
-statusLabel.Position = UDim2.new(0, 10, 0, 10)
-statusLabel.Text = remote and "" or "Aviso: Remote não encontrado. Botões desativados."
-statusLabel.TextColor3 = Color3.fromRGB(255, 200, 120)
-statusLabel.Font = Enum.Font.Gotham
-statusLabel.TextSize = 12
-statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-statusLabel.Parent = content
-
--- Botões de jogador
-local function criarBotao(playerObj)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -16, 0, 40)
-    btn.BackgroundColor3 = Color3.fromRGB(14, 17, 22)
-    btn.Text = ""
-    btn.BorderSizePixel = 0
-    btn.AutoButtonColor = true
-    btn.Parent = scrolling
-
-    local cornerBtn = Instance.new("UICorner")
-    cornerBtn.CornerRadius = UDim.new(0, 10)
-    cornerBtn.Parent = btn
-
-    local btnStroke = Instance.new("UIStroke")
-    btnStroke.Thickness = 1
-    btnStroke.Color = Color3.fromRGB(70, 70, 100)
-    btnStroke.Transparency = 0.4
-    btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    btnStroke.Parent = btn
-
-    local playerName = Instance.new("TextLabel")
-    playerName.Size = UDim2.new(1, -50, 1, 0)
-    playerName.Position = UDim2.new(0, 10, 0, 0)
-    playerName.BackgroundTransparency = 1
-    playerName.Text = playerObj.Name
-    playerName.TextColor3 = Color3.fromRGB(255, 255, 255)
-    playerName.Font = Enum.Font.GothamBold
-    playerName.TextSize = 14
-    playerName.TextXAlignment = Enum.TextXAlignment.Left
-    playerName.Parent = btn
-
-    local hoverTween = TweenService:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), { BackgroundColor3 = Color3.fromRGB(24, 28, 36) })
-    local unhoverTween = TweenService:Create(btn, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), { BackgroundColor3 = Color3.fromRGB(14, 17, 22) })
-    btn.MouseEnter:Connect(function() hoverTween:Play() end)
-    btn.MouseLeave:Connect(function() unhoverTween:Play() end)
-
-    btn.MouseButton1Click:Connect(function()
-        if remote then
-            executarComandos(playerObj.Name)
-        else
-            warn("[FleischPanel] Remote ausente. Clique ignorado.")
+            if inBrainhotList(inst.Name)
+                and not CollectionService:HasTag(inst, CONFIG.BRAINHOT_TAG)
+                and withinDistance(inst, CONFIG.BRAINHOT_MAX_DISTANCE) then
+                attachBrainhotMarkers(inst)
+            end
         end
-    end)
+    end
+
+    -- Liga/desliga conforme distância (economia)
+    for inst, pack in pairs(brainhotMarked) do
+        if inst and inst.Parent then
+            local visible = withinDistance(inst, CONFIG.BRAINHOT_MAX_DISTANCE)
+            if pack.hl then pack.hl.Enabled = visible end
+            if pack.bb then pack.bb.Enabled = visible end
+        end
+    end
 end
 
-local function atualizarLista()
-    -- remove antigos
-    for _, child in ipairs(scrolling:GetChildren()) do
-        if child:IsA("TextButton") then child:Destroy() end
-    end
-    -- recria
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= player then criarBotao(p) end
-    end
-    -- status
-    statusLabel.Text = remote and "" or "Aviso: Remote não encontrado. Botões desativados."
-end
+-- ==================== LOOP ====================
+applyLightingTweaks()
+applySoundTweaks()
+hookPlayers()
 
--- loop atualização
-task.spawn(function()
-    while screenGui.Parent do
-        atualizarLista()
-        task.wait(2)
+RunService.Heartbeat:Connect(function()
+    local now = tick()
+    -- Anti-Lag varre com jitter para evitar picos sincronizados
+    if (now - lastScan) >= (CONFIG.SCAN_INTERVAL_SEC + scanJitter) then
+        lastScan = now
+        scanJitter = math.random() * 0.35
+        scanEnvironment()
     end
+    -- ESP de brainhots (somente itens)
+    scanBrainhots()
 end)
-atualizarLista()
 
--- =============== Minimizar sem sumir ===============
-local collapsed = false
-local function toggleMinimize()
-    collapsed = not collapsed
-    content.Visible = not collapsed           -- só esconde o conteúdo
-    minimizeBtn.Text = collapsed and "□" or "—"
-end
-
--- CTRL para alternar
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.LeftControl or input.KeyCode == Enum.KeyCode.RightControl then
-        toggleMinimize()
+-- ==================== GARANTIA: REMOVER ESP DE PLAYER (se sobrou de versões antigas) ====================
+for _, plr in ipairs(Players:GetPlayers()) do
+    local c = plr.Character
+    if c then
+        local old = c:FindFirstChild("PlayerOutlineESP", true)
+        if old then pcall(function() old:Destroy() end) end
     end
+end
+Players.PlayerAdded:Connect(function(plr)
+    plr.CharacterAdded:Connect(function(c)
+        local old = c:FindFirstChild("PlayerOutlineESP", true)
+        if old then pcall(function() old:Destroy() end) end
+    end)
 end)
 
--- Arrastar pelo header (agora que ele existe)
-do
-    local dragging, dragStart, startPos
-    header.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging, dragStart, startPos = true, input.Position, frame.Position
-        end
-    end)
-    header.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - dragStart
-            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-end
-
--- Botão minimizar também alterna
-minimizeBtn.MouseButton1Click:Connect(toggleMinimize)
-
--- =============== Opcional: Auto-Kick (K) ===============
--- Remova esta seção se não quiser o atalho de sair rápido.
-local function doSelfKick()
-    local msg = "Você foi removido pelo sistema de moderação.\n(Code: 268)"
-    pcall(function() player:Kick(msg) end)
-end
-UserInputService.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.KeyCode == Enum.KeyCode.K then
-        doSelfKick()
-    end
-end)
+-- ==================== LOG ====================
+print(("="):rep(56))
+print("✓ ANTI-LAG V4 ATIVADO (sem ESP de player / sem wallhack)")
+print(("→ Varredura a cada ~%.1fs, orçamento: %d itens/ciclo"):format(CONFIG.SCAN_INTERVAL_SEC, CONFIG.MAX_ITEMS_PER_TICK))
+print("→ Distância limite p/ otimização: " .. tostring(CONFIG.DIST_LIMIT) .. " studs")
+print("→ Modo AGRESSIVO: " .. (CONFIG.AGGRESSIVE_MODE and "LIGADO (remove visuais pesados)" or "DESLIGADO (reversível)"))
+print("→ Character trim: " .. (CONFIG.ENABLE_CHARACTER_TRIM and "ATIVO" or "INATIVO"))
+print("→ Brainhot ESP: " .. (CONFIG.ENABLE_BRAINHOT_ESP and "ATIVO" or "INATIVO"))
+print(("="):rep(56))
