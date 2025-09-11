@@ -3,6 +3,7 @@ local HttpService = game:GetService('HttpService')
 
 -- ======================================================================
 -- FLEISHUG- Calculator (GETSTOCK V3): Contador de Brainrots (SEM PREÇOS)
+-- COMENDO TODOS QUE LER
 -- ======================================================================
 -- Mudanças:
 --  - Removida toda a tabela de preços e cálculos de valor
