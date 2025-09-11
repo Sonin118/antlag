@@ -8,7 +8,7 @@
 local CONFIG = {
     -- Anti-Lag
     ENABLE_ENV_OPTIMIZE     = true,    -- Otimizar ambiente (partes, meshes, luzes/partículas/decais)
-    ENABLE_CHARACTER_TRIM   = false,   -- (Opcional) Simplificar skins de personagens (apenas cliente)
+    ENABLE_CHARACTER_TRIM   = true,   -- (Opcional) Simplificar skins de personagens (apenas cliente)
     ENABLE_LIGHTING_TWEAKS  = true,    -- Ajustes leves e reversíveis no Lighting
     ENABLE_SOUND_TWEAKS     = true,    -- Ajustes leves no SoundService
 
