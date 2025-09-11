@@ -2,8 +2,7 @@ local OrionLib    = loadstring(game:HttpGet(('https://raw.githubusercontent.com/
 local HttpService = game:GetService('HttpService')
 
 -- ======================================================================
--- FLEISHUG- Calculator (GETSTOCK V3): Contador de Brainrots (SEM PREÇOS)
--- COMENDO TODOS QUE LER
+-- SAB - Calculator (GETSTOCK V3): Contador de Brainrots (SEM PREÇOS)
 -- ======================================================================
 -- Mudanças:
 --  - Removida toda a tabela de preços e cálculos de valor
@@ -14,10 +13,10 @@ local HttpService = game:GetService('HttpService')
 -- ======================================================================
 
 local Window = OrionLib:MakeWindow({
-    Name = "FLEISHUG - Calculator (No Prices)",
+    Name = "FLEISHUG - Calculator",
     HidePremium = false,
     SaveConfig = false,
-    IntroText = "Made by @soninho_o (V3 - No Prices)"
+    IntroText = "Made by @soninho_o"
 })
 
 getgenv().SAB_CALC = getgenv().SAB_CALC or {
@@ -509,6 +508,54 @@ Tab:AddButton({
     end
 })
 
+
+Tab:AddButton({
+    Name = "Export TXT (Arquivo / Workspace)",
+    Callback = function()
+        -- Gera texto consolidado simples (lista por dono e total do servidor)
+        local filterText = (getSecrets and getBrainrotGods and "Secrets e Brainrot Gods") or
+                           (getSecrets and "Secrets") or
+                           (getBrainrotGods and "Brainrot Gods") or
+                           "Sem filtro ativo"
+
+        local report, totalCount, ownersCount = buildFullReport(filterText)
+        local text = table.concat(report, "\n")
+
+        -- Tenta salvar em arquivo local (exploit API) se disponível
+        local hasWrite = (typeof(writefile) == "function")
+        local hasIsFolder = (typeof(isfolder) == "function")
+        local hasMakeFolder = (typeof(makefolder) == "function")
+
+        local savedWhere = ""
+
+        if hasWrite then
+            local dir = "FLEISHUG_Exports"
+            if hasIsFolder and not isfolder(dir) and hasMakeFolder then
+                makefolder(dir)
+            end
+            local fname = string.format("%s/export_%d.txt", dir, os.time())
+            writefile(fname, text)
+            savedWhere = "arquivo: " .. fname
+        else
+            -- Sem API de arquivo: cria um Folder + StringValue dentro do workspace
+            local folder = workspace:FindFirstChild("FLEISHUG_Exports")
+            if not folder then
+                folder = Instance.new("Folder")
+                folder.Name = "FLEISHUG_Exports"
+                folder.Parent = workspace
+            end
+            local sv = Instance.new("StringValue")
+            sv.Name = "export_" .. tostring(os.time())
+            sv.Value = text
+            sv.Parent = folder
+            savedWhere = "workspace.FLEISHUG_Exports." .. sv.Name .. " (StringValue)"
+        end
+
+        setclipboard(text)
+        notification("Exportado", "TXT gerado e copiado. Local: "..savedWhere, "rbxassetid://4483345998", 6)
+        print("[FLEISHUG] Export salvo em: "..savedWhere)
+    end
+})
 Tab:AddButton({
     Name = "Export JSON (Banco por Dono)",
     Callback = function()
