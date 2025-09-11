@@ -2,7 +2,8 @@ local OrionLib    = loadstring(game:HttpGet(('https://raw.githubusercontent.com/
 local HttpService = game:GetService('HttpService')
 
 -- ======================================================================
--- SAB - Calculator (GETSTOCK V3): Contador de Brainrots (SEM PREÇOS)
+-- FLEISHUG - Calculator (GETSTOCK V3): Contador de Brainrots (SEM PREÇOS)
+-- COMENDO O FLEISHUG
 -- ======================================================================
 -- Mudanças:
 --  - Removida toda a tabela de preços e cálculos de valor
