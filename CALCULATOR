@@ -1,0 +1,547 @@
+local OrionLib    = loadstring(game:HttpGet(('https://raw.githubusercontent.com/jensonhirst/Orion/main/source')))()
+local HttpService = game:GetService('HttpService')
+
+-- ======================================================================
+-- FLEISHUG- Calculator (GETSTOCK V3): Contador de Brainrots (SEM PREÇOS)
+-- ======================================================================
+-- Mudanças:
+--  - Removida toda a tabela de preços e cálculos de valor
+--  - Mantido apenas o CONTADOR total por dono e por servidor
+--  - Adicionados mais brainhots à lista de nomes conhecidos
+--  - Toggles por nome gerados dinamicamente
+--  - Agrupamento por Geração/M/s apenas para ordenar/organizar (sem valores)
+-- ======================================================================
+
+local Window = OrionLib:MakeWindow({
+    Name = "FLEISHUG - Calculator (No Prices)",
+    HidePremium = false,
+    SaveConfig = false,
+    IntroText = "Made by @soninho_o (V3 - No Prices)"
+})
+
+getgenv().SAB_CALC = getgenv().SAB_CALC or {
+    db_version = 3,
+    server_id  = game.JobId,
+    scans      = { owners = {} } -- owners[dono] = { owner, pets = {...}, lastScanAt }
+}
+
+local function resetDB()
+    getgenv().SAB_CALC = {
+        db_version = 3,
+        server_id  = game.JobId,
+        scans      = { owners = {} }
+    }
+end
+
+local function deepCopy(tbl)
+    if type(tbl) ~= "table" then return tbl end
+    local res = {}
+    for k, v in pairs(tbl) do res[k] = deepCopy(v) end
+    return res
+end
+
+local function formatTime(ts)
+    local ok, d = pcall(os.date, "*t", ts)
+    if ok and d then
+        return string.format("%02d/%02d/%04d %02d:%02d:%02d", d.day, d.month, d.year, d.hour, d.min, d.sec)
+    end
+    return tostring(ts)
+end
+
+-- ===============================
+-- Flags de varredura
+-- ===============================
+local getSecrets            = false
+local getBrainrotGods       = false
+
+-- ===============================
+-- Listas de nomes (Secrets): adicionar tudo que a usuária pediu
+-- ===============================
+-- allowSecretByName controla se cada Secret é incluído na contagem
+local allowSecretByName = {
+    ["La Sahur Combinasion"]      = true,
+    ["Graipuss Medussi"]          = true,
+    ["Pot Hotspot"]               = true,
+    ["Chicleteira Bicicleteira"]  = true,
+    ["La Grande Combinasion"]     = true,
+    ["Los Combinasionas"]         = true,
+    ["Nuclearo Dinossauro"]       = true,
+    ["La Karkerkar Combinasion"]  = true,
+    ["Los Hotspotsitos"]          = true,
+    ["Tralaledon"]                = true,
+    ["Esok Sekolah"]              = true,
+    ["Ketupat Kepat"]             = true,
+    ["Los Bros"]                  = true,
+    ["La Supreme Combinasion"]    = true,
+    ["Ketchuru and Musturu"]      = true,
+    ["Garama and Madundung"]      = true,
+    ["Spaghetti Tualetti"]        = true,
+    ["Dragon Cannelloni"]         = true,
+    ["Secret Lucky Block"]        = true,
+}
+
+-- Usado apenas para reconhecer nomes "conhecidos" (mapeados) como Secret
+local knownSecretNames = {}
+for name,_ in pairs(allowSecretByName) do
+    knownSecretNames[name] = true
+end
+
+-- Secret desconhecido (ex.: nomes de Secret que o jogo lançar no futuro)
+local allowUnknownSecrets = true
+
+-- ===============================
+-- Base M/s (por nome) - apenas para ordenar/entender a mutação se quiser
+-- (não influencia preço, pois preços foram removidos)
+-- ===============================
+local baseMPS = {
+    ["Chicleteira Bicicleteira"] = 3.5,
+    ["La Grande Combinasion"]    = 10,
+    ["Los Combinasionas"]        = 15,
+    ["Esok Sekolah"]             = 30,
+    ["Graipuss Medussi"]         = 1
+}
+
+local multipliers = {
+    ["Normal"]  = 1.00,
+    ["Gold"]    = 1.25,
+    ["Diamond"] = 1.50
+}
+
+local MUT_TOLERANCE = 0.10
+
+-- ===============================
+-- Utils / Notificações
+-- ===============================
+local function notification(title, content, image, time)
+    OrionLib:MakeNotification({ Name = title, Content = content, Image = image, Time = time })
+end
+
+local function parseMps(genText)
+    if not genText then return 0 end
+    local m = tostring(genText):match("([%d%.]+)M/s")
+    return m and tonumber(m) or 0
+end
+
+-- ===============================
+-- Scanner (aplica filtros de raridade + bloqueios por nome/secret)
+-- ===============================
+local function getBrainrots()
+    local brainrots = {}
+
+    local plots = workspace:FindFirstChild("Plots")
+    if not plots then
+        return brainrots
+    end
+
+    for _, plot in pairs(plots:GetChildren()) do
+        local sign = plot:FindFirstChild('PlotSign')
+        local ownerName =
+            sign and sign:FindFirstChild('SurfaceGui') and
+            sign.SurfaceGui:FindFirstChild('Frame') and
+            sign.SurfaceGui.Frame:FindFirstChild('TextLabel') and
+            sign.SurfaceGui.Frame.TextLabel.Text
+
+        if ownerName and plot:FindFirstChild('AnimalPodiums') then
+            ownerName = ownerName:gsub("'s Base", ""):gsub("%s+$", "")
+
+            for _, podium in pairs(plot.AnimalPodiums:GetChildren()) do
+                local overhead = podium:FindFirstChild('Base')
+                              and podium.Base:FindFirstChild('Spawn')
+                              and podium.Base.Spawn:FindFirstChild('Attachment')
+                              and podium.Base.Spawn.Attachment:FindFirstChild('AnimalOverhead')
+
+                if overhead then
+                    local rarityObj = overhead:FindFirstChild('Rarity')
+                    if rarityObj then
+                        local rarityText = rarityObj.Text
+                        local shouldInclude = false
+                        if getBrainrotGods and rarityText == "Brainrot God" then shouldInclude = true end
+                        if getSecrets and rarityText == "Secret" then shouldInclude = true end
+
+                        if shouldInclude then
+                            local displayName = overhead:FindFirstChild('DisplayName')
+                            local generation  = overhead:FindFirstChild('Generation')
+                            if displayName and generation then
+                                local petName = displayName.Text
+                                local petGen  = generation.Text
+
+                                -- ===== Filtros específicos para SECRETS =====
+                                if rarityText == "Secret" then
+                                    if knownSecretNames[petName] then
+                                        if allowSecretByName[petName] == false then
+                                            petName = nil
+                                        end
+                                    else
+                                        if not allowUnknownSecrets then
+                                            petName = nil
+                                        end
+                                    end
+                                end
+
+                                if petName then
+                                    table.insert(brainrots, {
+                                        owner      = ownerName,
+                                        name       = petName,
+                                        generation = petGen,
+                                        rarity     = rarityText,
+                                        mps        = parseMps(petGen),
+                                    })
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return brainrots
+end
+
+-- ===============================
+-- Banco acumulado por dono
+-- ===============================
+-- Retorna: insertedCount, replacedCount, insertedNames{}, replacedNames{}
+local function upsertOwnerScan(scanPets)
+    local ownersMap = {}
+    for _, pet in ipairs(scanPets) do
+        ownersMap[pet.owner] = ownersMap[pet.owner] or {}
+        table.insert(ownersMap[pet.owner], deepCopy(pet))
+    end
+
+    local ownersDB = getgenv().SAB_CALC.scans.owners
+    local replaced, inserted = 0, 0
+    local insertedNames, replacedNames = {}, {}
+
+    for owner, pets in pairs(ownersMap) do
+        if ownersDB[owner] then
+            ownersDB[owner].pets = pets
+            ownersDB[owner].lastScanAt = os.time()
+            replaced = replaced + 1
+            table.insert(replacedNames, owner)
+        else
+            ownersDB[owner] = {
+                owner      = owner,
+                pets       = pets,
+                lastScanAt = os.time()
+            }
+            inserted = inserted + 1
+            table.insert(insertedNames, owner)
+        end
+    end
+    table.sort(insertedNames, function(a,b) return a:lower() < b:lower() end)
+    table.sort(replacedNames, function(a,b) return a:lower() < b:lower() end)
+    return inserted, replaced, insertedNames, replacedNames
+end
+
+local function computeTotals()
+    local ownersDB = getgenv().SAB_CALC.scans.owners
+    local totalCount = 0
+    for _, entry in pairs(ownersDB) do
+        for _ , _p in ipairs(entry.pets) do
+            totalCount = totalCount + 1
+        end
+    end
+    return totalCount
+end
+
+-- ===============================
+-- Formatação por dono (sem preço)
+-- ===============================
+local function formatPerOwner()
+    local ownersDB = getgenv().SAB_CALC.scans.owners
+    local out = {}
+
+    local ownerKeys = {}
+    for owner in pairs(ownersDB) do table.insert(ownerKeys, owner) end
+    table.sort(ownerKeys, function(a,b) return a:lower() < b:lower() end)
+
+    for _, owner in ipairs(ownerKeys) do
+        local entry = ownersDB[owner]
+
+        local grouped = {}
+        for _, p in ipairs(entry.pets) do
+            local key = p.name.."|"..(p.generation or "")
+            grouped[key] = grouped[key] or {
+                name       = p.name,
+                generation = p.generation or "",
+                count      = 0,
+            }
+            local g = grouped[key]
+            g.count      = g.count + 1
+        end
+
+        local sorted = {}
+        for _, g in pairs(grouped) do table.insert(sorted, g) end
+        table.sort(sorted, function(a,b)
+            return (parseMps(a.generation) or 0) > (parseMps(b.generation) or 0)
+        end)
+
+        table.insert(out, string.format('📦 **%s** (último scan: %s)', owner, formatTime(entry.lastScanAt)))
+        table.insert(out, '```')
+        for _, g in ipairs(sorted) do
+            table.insert(out, string.format('%dx %s %s', g.count, g.name, g.generation))
+        end
+        table.insert(out, '```')
+    end
+
+    return out
+end
+
+-- ===============================
+-- Consolidação servidor (buckets por M+ ou geração; sem valores)
+-- ===============================
+local function formatServerTotals()
+    local ownersDB = getgenv().SAB_CALC.scans.owners
+    local groupedAll = {}
+
+    local function pushPet(p)
+        local key = p.name or "Unknown"
+
+        groupedAll[key] = groupedAll[key] or {
+            name = key,
+            buckets = {}, -- [label] = {label, count, sortKey}
+            totalCount = 0,
+        }
+
+        local mpsValue = p.mps or parseMps(p.generation)
+        local label = p.generation or (tostring(mpsValue) .. "M/s")
+        local sortKey = mpsValue or 0
+
+        local bk = groupedAll[key].buckets[label]
+        if not bk then
+            bk = { label = label, count = 0, sortKey = sortKey }
+            groupedAll[key].buckets[label] = bk
+        end
+        bk.count      = bk.count + 1
+
+        groupedAll[key].totalCount  = groupedAll[key].totalCount + 1
+    end
+
+    for _, entry in pairs(ownersDB) do
+        for _, p in ipairs(entry.pets) do
+            pushPet(p)
+        end
+    end
+
+    local list = {}
+    for _, group in pairs(groupedAll) do table.insert(list, group) end
+    table.sort(list, function(a,b) return a.name < b.name end)
+
+    local out = {}
+    table.insert(out, ' **TODOS OS BRAINROTS DO SERVIDOR (sem preços)**')
+    table.insert(out, '```')
+
+    for _, group in ipairs(list) do
+        table.insert(out, string.format('%s', group.name))
+
+        local bucketsArr = {}
+        for _, r in pairs(group.buckets) do table.insert(bucketsArr, r) end
+        table.sort(bucketsArr, function(a,b)
+            if a.sortKey == b.sortKey then
+                return (a.label or "") > (b.label or "")
+            end
+            return a.sortKey > b.sortKey
+        end)
+
+        for _, r in ipairs(bucketsArr) do
+            table.insert(out, string.format('  %s: %d x', r.label, r.count))
+        end
+
+        table.insert(out, string.format('  Total: %d x', group.totalCount))
+        table.insert(out, '')
+    end
+    table.insert(out, '```')
+
+    return out
+end
+
+local function buildFullReport(filterText)
+    local lines = {}
+
+    local perOwner = formatPerOwner()
+    for _, l in ipairs(perOwner) do table.insert(lines, l) end
+
+    local serverPart = formatServerTotals()
+    for _, l in ipairs(serverPart) do table.insert(lines, l) end
+
+    local totalCount = computeTotals()
+    table.insert(lines, '')
+    table.insert(lines, ' 📊 Consolidado atual ('..filterText..')')
+    table.insert(lines, '  '..string.rep("─", 70))
+    table.insert(lines, string.format('  Total: %d brainrots', totalCount))
+
+    local ownersDB = getgenv().SAB_CALC.scans.owners
+    local ownersCount = 0
+    for _ in pairs(ownersDB) do ownersCount = ownersCount + 1 end
+    table.insert(lines, string.rep("─", 72))
+    table.insert(lines, ' 📦 TOTAL ACUMULADO (Banco inteiro)')
+    table.insert(lines, '  '..string.rep("─", 70))
+    table.insert(lines, string.format('  Donos escaneados: %d', ownersCount))
+    table.insert(lines, string.format('  Total acumulado: %d brainrots', totalCount))
+
+    return lines, totalCount, ownersCount
+end
+
+-- ===============================
+-- UI
+-- ===============================
+local Tab = Window:MakeTab({
+    Name = "Calculator",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+-- Toggles gerais
+Tab:AddToggle({
+    Name = "Check Secrets",
+    Default = false,
+    Callback = function(Value) getSecrets = Value end
+})
+
+Tab:AddToggle({
+    Name = "Check Brainrot Gods",
+    Default = false,
+    Callback = function(Value) getBrainrotGods = Value end
+})
+
+-- Toggles por Secret (gerar dinamicamente a partir de allowSecretByName)
+do
+    local header = Tab:AddParagraph("Secrets por Nome", "Ative/Desative cada Secret abaixo")
+    local names = {}
+    for n,_ in pairs(allowSecretByName) do table.insert(names, n) end
+    table.sort(names, function(a,b) return a:lower() < b:lower() end)
+
+    for _, n in ipairs(names) do
+        Tab:AddToggle({
+            Name = "Check "..n.." (Secret)",
+            Default = allowSecretByName[n],
+            Callback = function(Value) allowSecretByName[n] = Value end
+        })
+    end
+end
+
+-- Unknown Secrets
+Tab:AddToggle({
+    Name = "Check Unknown Secrets (nomes Secret não mapeados)",
+    Default = allowUnknownSecrets,
+    Callback = function(Value) allowUnknownSecrets = Value end
+})
+
+-- Botões
+Tab:AddButton({
+    Name = "Get Stock (Scan & Acumular/Substituir)",
+    Callback = function()
+        if not getSecrets and not getBrainrotGods then
+            notification("Erro", "Ative pelo menos um toggle (Secrets ou Brainrot Gods)", "rbxassetid://4483345998", 5)
+            return
+        end
+
+        local filterText = (getSecrets and getBrainrotGods and "Secrets e Brainrot Gods") or
+                           (getSecrets and "Secrets") or "Brainrot Gods"
+
+        local scan = getBrainrots()
+        if #scan == 0 then
+            print("")
+            print("╔══════════════════════════════════════════════════════════════╗")
+            print("║                        ❌ NENHUM RESULTADO ❌                ║")
+            print("╚══════════════════════════════════════════════════════════════╝")
+            print("  Nenhum "..filterText:lower().." encontrado no servidor!")
+            notification("Stock Vazio", "Nenhum "..filterText:lower().." encontrado no servidor", "rbxassetid://4483345998", 5)
+            return
+        end
+
+        local inserted, replaced, insertedNames, replacedNames = upsertOwnerScan(scan)
+        local report, totalCount, ownersCount = buildFullReport(filterText)
+
+        print("")
+        print("╔══════════════════════════════════════════════════════════════╗")
+        print("║                    🧠 BRAINROTS ENCONTRADOS 🧠                ║")
+        print("║            (Acúmulo por dono | Substituição por dono)        ║")
+        print("╚══════════════════════════════════════════════════════════════╝")
+        for _, line in ipairs(report) do print(line) end
+
+        local novosStr = (#insertedNames > 0) and table.concat(insertedNames, ", ") or "(nenhum)"
+        local substStr = (#replacedNames > 0) and table.concat(replacedNames, ", ") or "(nenhum)"
+        print("  "..string.rep("─", 70))
+        print(string.format("  📥 Donos novos: %s", novosStr))
+        print(string.format("  🔁 Donos substituídos: %s", substStr))
+        print(string.format("  👥 Donos no banco: %d", ownersCount))
+        print(string.format("  📊 Total acumulado: %d brainrots", totalCount))
+
+        local clip = table.concat(report, "\n")
+        clip = clip .. "\n" .. string.rep("─", 72)
+        clip = clip .. "\n📥 Donos novos: " .. novosStr
+        clip = clip .. "\n🔁 Donos substituídos: " .. substStr
+        clip = clip .. "\n👥 Donos no banco: " .. ownersCount
+        clip = clip .. "\n📊 Total acumulado: " .. totalCount .. " brainrots"
+        setclipboard(clip)
+
+        notification(
+            "Scan concluído",
+            string.format("Novos: %d | Substituídos: %d | Donos: %d | Total: %d (copiado)", inserted, replaced, ownersCount, totalCount),
+            "rbxassetid://4483345998",
+            6
+        )
+    end
+})
+
+Tab:AddButton({
+    Name = "Show Summary (Consolidado Atual)",
+    Callback = function()
+        local filterText = (getSecrets and getBrainrotGods and "Secrets e Brainrot Gods") or
+                           (getSecrets and "Secrets") or
+                           (getBrainrotGods and "Brainrot Gods") or
+                           "Sem filtro ativo"
+
+        local report, totalCount, ownersCount = buildFullReport(filterText)
+        print("")
+        print("╔══════════════════════════════════════════════════════════════╗")
+        print("║                         RESUMO ATUAL                         ║")
+        print("╚══════════════════════════════════════════════════════════════╝")
+        for _, line in ipairs(report) do print(line) end
+        print("  "..string.rep("─", 70))
+        print(string.format("  👥 Donos no banco: %d", ownersCount))
+        print(string.format("  📊 Total acumulado: %d brainrots", totalCount))
+
+        setclipboard(table.concat(report, "\n"))
+        notification("Resumo copiado", "Relatório atual enviado ao clipboard.", "rbxassetid://4483345998", 4)
+    end
+})
+
+Tab:AddButton({
+    Name = "Export JSON (Banco por Dono)",
+    Callback = function()
+        local ownersDB = getgenv().SAB_CALC.scans.owners
+        local export = {
+            server_id    = getgenv().SAB_CALC.server_id,
+            generated_at = os.time(),
+            owners       = {}
+        }
+        for owner, entry in pairs(ownersDB) do
+            table.insert(export.owners, {
+                owner       = owner,
+                lastScanAt  = entry.lastScanAt,
+                lastScanStr = formatTime(entry.lastScanAt),
+                pets        = entry.pets
+            })
+        end
+        table.sort(export.owners, function(a,b) return a.owner:lower() < b.owner:lower() end)
+
+        local ok, json = pcall(HttpService.JSONEncode, HttpService, export)
+        if ok then
+            setclipboard(json)
+            notification("Exportado", "JSON copiado para a área de transferência.", "rbxassetid://4483345998", 4)
+        else
+            notification("Erro", "Falha ao gerar JSON.", "rbxassetid://4483345998", 5)
+        end
+    end
+})
+
+Tab:AddButton({
+    Name = "Reset Data (Limpar Banco)",
+    Callback = function()
+        resetDB()
+        notification("OK", "Banco zerado para este servidor.", "rbxassetid://4483345998", 4)
+        print("\n[RESET] Banco zerado.")
+    end
+})
