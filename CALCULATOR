@@ -79,6 +79,14 @@ local allowSecretByName = {
     ["Spaghetti Tualetti"]        = true,
     ["Dragon Cannelloni"]         = true,
     ["Secret Lucky Block"]        = true,
+    ["Las Sis"]                   = true,
+    ["Celularcini Viciosini"]     = true,
+    ["Extinct Tralalero"]         = true,
+    ["La Extinct Grande"]         = true,
+    ["Tacorita Bicicleta"]        = true,
+    ["67"]                        = true,
+    ["Quesadilla Crocodila"]      = true,
+    
 }
 
 -- Usado apenas para reconhecer nomes "conhecidos" (mapeados) como Secret
